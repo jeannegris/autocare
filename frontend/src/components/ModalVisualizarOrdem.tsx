@@ -92,10 +92,10 @@ export default function ModalVisualizarOrdem({
         ordemNumero={ordem?.numero}
       />
       
-      <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-4 mx-auto p-5 border max-w-4xl shadow-lg rounded-md bg-white">
+      <div className="fixed inset-0 z-50 w-full h-full overflow-y-auto bg-gray-600 bg-opacity-50">
+      <div className="relative max-w-4xl p-5 mx-auto bg-white border rounded-md shadow-lg top-4">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-2xl font-bold text-gray-900">
               Ordem de Serviço #{ordem.numero}
@@ -105,21 +105,21 @@ export default function ModalVisualizarOrdem({
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="h-6 w-6" />
+            <X className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Informações Principais */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-6 lg:col-span-2">
             {/* Dados Gerais */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                <FileText className="h-4 w-4 mr-2" />
+            <div className="p-4 rounded-lg bg-gray-50">
+              <h4 className="flex items-center mb-3 font-medium text-gray-900">
+                <FileText className="w-4 h-4 mr-2" />
                 Informações da Ordem
               </h4>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <span className="text-sm text-gray-600">Tipo:</span>
                   <p className="font-medium">{TIPOS_ORDEM[ordem.tipo_ordem as keyof typeof TIPOS_ORDEM] || ordem.tipo_ordem}</p>
@@ -137,13 +137,6 @@ export default function ModalVisualizarOrdem({
                   </div>
                 )}
                 
-                {ordem.funcionario_responsavel && (
-                  <div>
-                    <span className="text-sm text-gray-600">Responsável:</span>
-                    <p className="font-medium">{ordem.funcionario_responsavel}</p>
-                  </div>
-                )}
-                
                 {ordem.km_veiculo && (
                   <div>
                     <span className="text-sm text-gray-600">KM do Veículo:</span>
@@ -152,39 +145,56 @@ export default function ModalVisualizarOrdem({
                 )}
               </div>
               
-              {ordem.descricao_servico && (
-                <div className="mt-4">
-                  <span className="text-sm text-gray-600">Descrição do Serviço:</span>
-                  <p className="text-sm text-gray-900 mt-1">{ordem.descricao_servico}</p>
-                </div>
-              )}
-              
               {ordem.observacoes && (
                 <div className="mt-4">
                   <span className="text-sm text-gray-600">Observações:</span>
-                  <p className="text-sm text-gray-900 mt-1">{ordem.observacoes}</p>
+                  <p className="mt-1 text-sm text-gray-900">{ordem.observacoes}</p>
                 </div>
               )}
             </div>
 
+            {/* Descrição do Serviço e Valor */}
+            {ordem.descricao_servico && (
+              <div className="p-4 rounded-lg bg-gray-50">
+                <h4 className="flex items-center mb-3 font-medium text-gray-900">
+                  <Wrench className="w-4 h-4 mr-2" />
+                  Descrição do Serviço
+                </h4>
+                
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-sm text-gray-600">Descrição:</span>
+                    <p className="mt-1 text-sm text-gray-900">{ordem.descricao_servico}</p>
+                  </div>
+                  
+                  <div>
+                    <span className="text-sm text-gray-600">Valor Cobrado:</span>
+                    <p className="mt-1 text-lg font-semibold text-green-600">
+                      R$ {parseFloat(String(ordem.valor_servico || 0)).toFixed(2).replace('.', ',')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Itens da Ordem */}
             {ordem.itens && ordem.itens.length > 0 && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                  <Package className="h-4 w-4 mr-2" />
+              <div className="p-4 rounded-lg bg-gray-50">
+                <h4 className="flex items-center mb-3 font-medium text-gray-900">
+                  <Package className="w-4 h-4 mr-2" />
                   Itens da Ordem ({ordem.itens.length})
                 </h4>
                 
                 <div className="space-y-3">
                   {ordem.itens.map((item, index) => (
-                    <div key={index} className="bg-white p-3 rounded border">
-                      <div className="flex justify-between items-start">
+                    <div key={index} className="p-3 bg-white border rounded">
+                      <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             {item.tipo === 'PRODUTO' ? (
-                              <Package className="h-4 w-4 text-blue-600" />
+                              <Package className="w-4 h-4 text-blue-600" />
                             ) : (
-                              <Wrench className="h-4 w-4 text-green-600" />
+                              <Wrench className="w-4 h-4 text-green-600" />
                             )}
                             <span className="font-medium">{item.descricao}</span>
                             <span className={`px-2 py-1 text-xs rounded-full ${
@@ -196,11 +206,11 @@ export default function ModalVisualizarOrdem({
                             </span>
                           </div>
                           {item.observacoes && (
-                            <p className="text-sm text-gray-600 mt-1">{item.observacoes}</p>
+                            <p className="mt-1 text-sm text-gray-600">{item.observacoes}</p>
                           )}
                         </div>
                         
-                        <div className="text-right ml-4">
+                        <div className="ml-4 text-right">
                           <div className="flex items-center gap-2 text-sm">
                             <span>Qtd: {item.quantidade}</span>
                             <span>×</span>
@@ -221,8 +231,8 @@ export default function ModalVisualizarOrdem({
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Status Atual */}
-            <div className="bg-white border rounded-lg p-4">
-              <h4 className="font-medium text-gray-900 mb-3">Status da Ordem</h4>
+            <div className="p-4 bg-white border rounded-lg">
+              <h4 className="mb-3 font-medium text-gray-900">Status da Ordem</h4>
               
               <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mb-4 ${getStatusInfo(ordem.status || 'PENDENTE').color}`}>
                 {getStatusInfo(ordem.status || 'PENDENTE').label}
@@ -231,13 +241,13 @@ export default function ModalVisualizarOrdem({
               {onChangeStatus && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block mb-2 text-sm font-medium text-gray-700">
                       Alterar para:
                     </label>
                     <select
                       value={novoStatus}
                       onChange={(e) => setNovoStatus(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {STATUS_OPTIONS.map(status => (
                         <option key={status.value} value={status.value}>
@@ -250,7 +260,7 @@ export default function ModalVisualizarOrdem({
                   {novoStatus !== ordem.status && (
                     <button
                       onClick={handleStatusChange}
-                      className="w-full bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
+                      className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
                     >
                       Atualizar Status
                     </button>
@@ -260,9 +270,9 @@ export default function ModalVisualizarOrdem({
             </div>
 
             {/* Resumo Financeiro */}
-            <div className="bg-white border rounded-lg p-4">
-              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                <DollarSign className="h-4 w-4 mr-2" />
+            <div className="p-4 bg-white border rounded-lg">
+              <h4 className="flex items-center mb-3 font-medium text-gray-900">
+                <DollarSign className="w-4 h-4 mr-2" />
                 Resumo Financeiro
               </h4>
               
@@ -281,7 +291,7 @@ export default function ModalVisualizarOrdem({
                     <span className="font-medium">-R$ {parseFloat(String(ordem.valor_desconto)).toFixed(2).replace('.', ',')}</span>
                   </div>
                 )}
-                <div className="border-t pt-2">
+                <div className="pt-2 border-t">
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
                     <span className="text-green-600">R$ {parseFloat(String(ordem.valor_total)).toFixed(2).replace('.', ',')}</span>
@@ -291,9 +301,9 @@ export default function ModalVisualizarOrdem({
             </div>
 
             {/* Informações do Cliente */}
-            <div className="bg-white border rounded-lg p-4">
-              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                <User className="h-4 w-4 mr-2" />
+            <div className="p-4 bg-white border rounded-lg">
+              <h4 className="flex items-center mb-3 font-medium text-gray-900">
+                <User className="w-4 h-4 mr-2" />
                 Cliente
               </h4>
               
@@ -304,13 +314,13 @@ export default function ModalVisualizarOrdem({
             </div>
 
             {/* Informações do Veículo */}
-            <div className="bg-white border rounded-lg p-4">
-              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                <Car className="h-4 w-4 mr-2" />
+            <div className="p-4 bg-white border rounded-lg">
+              <h4 className="flex items-center mb-3 font-medium text-gray-900">
+                <Car className="w-4 h-4 mr-2" />
                 Veículo
               </h4>
               
-              <div className="text-sm space-y-1">
+              <div className="space-y-1 text-sm">
                 <p><span className="text-gray-600">Marca/Modelo:</span> {ordem.veiculo_marca} {ordem.veiculo_modelo}</p>
                 <p><span className="text-gray-600">Placa:</span> {ordem.veiculo_placa}</p>
                 {ordem.veiculo_ano && <p><span className="text-gray-600">Ano:</span> {ordem.veiculo_ano}</p>}
@@ -320,7 +330,7 @@ export default function ModalVisualizarOrdem({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end mt-6 pt-6 border-t">
+        <div className="flex justify-end pt-6 mt-6 border-t">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
