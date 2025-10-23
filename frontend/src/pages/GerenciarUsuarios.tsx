@@ -64,11 +64,15 @@ const GerenciarUsuarios: React.FC = () => {
   const carregarPerfis = async () => {
     try {
       if (!token) return;
-      const response = await fetch(`${API_BASE}/perfis/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // 1) Tenta com o prefixo atual (ex.: /autocare-api)
+      let url = `${API_BASE}/perfis/`;
+      let response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+
+      // 2) Fallback: se 404 (rota não montada), tenta em /api
+      if (response.status === 404) {
+        url = `/api/perfis/`;
+        response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      }
 
       if (!response.ok) {
         const err = await response.text();

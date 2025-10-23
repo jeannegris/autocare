@@ -75,25 +75,39 @@ const GerenciarPerfis: React.FC = () => {
   const API_BASE = API_PREFIX;
 
   useEffect(() => {
+    // Aguarda o token para evitar 401/redirects antes da autenticação
+    if (!token) return;
     carregarPerfis();
-  }, []);
+  }, [token]);
 
   const carregarPerfis = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/perfis/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      if (!token) return;
+      // 1) Tenta no prefixo atual (ex.: /autocare-api)
+      let url = `${API_BASE}/perfis/`;
+      let response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      if (!response.ok) throw new Error('Erro ao carregar perfis');
+      // 2) Fallback: se 404 (backend antigo/rota não montada), tenta em /api
+      if (response.status === 404) {
+        url = `/api/perfis/`;
+        response = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Erro ao carregar perfis (${response.status}): ${text || 'desconhecido'}`);
+      }
 
       const data = await response.json();
       setPerfis(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro:', error);
-      toast.error('Erro ao carregar perfis');
+      toast.error(error.message || 'Erro ao carregar perfis');
     } finally {
       setLoading(false);
     }
