@@ -76,6 +76,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
+        // Garantir que o localStorage fique em sincronia com o usuário validado
+        try {
+          localStorage.setItem('user', JSON.stringify(userData));
+        } catch {}
       } else {
         // Token inválido, limpar
         logout();
@@ -195,8 +199,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const hasPermission = (permission: string): boolean => {
-    if (!user || !user.permissoes) return false;
-    return user.permissoes[permission] === true;
+    if (!user) return false;
+
+    // 1) Se backend enviou o mapa de permissões, usar diretamente
+    if (user.permissoes && typeof user.permissoes === 'object') {
+      if (permission in user.permissoes) {
+        return user.permissoes[permission] === true;
+      }
+    }
+
+    // 2) Fallback: se for Administrador (perfil_id=1 ou nome do perfil), conceder todas
+    //    Útil quando o banco ainda não aplicou o JSON de permissoes mas o perfil está correto
+    if (user.perfil_id === 1 || (user.perfil_nome && user.perfil_nome.toLowerCase() === 'administrador')) {
+      return true;
+    }
+
+    // 3) Sem mapa de permissões: negar por padrão
+    return false;
   };
 
   const value: AuthContextType = {
