@@ -214,6 +214,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return true;
     }
 
+    // 2.1) Fallback extra: se o username for 'admin', conceder todas
+    //     Necessário para ambientes onde o /auth/me ainda não retorna perfil_id/perfil_nome
+    if (user.username && user.username.toLowerCase() === 'admin') {
+      return true;
+    }
+
     // 3) Sem mapa de permissões: negar por padrão
     return false;
   };
