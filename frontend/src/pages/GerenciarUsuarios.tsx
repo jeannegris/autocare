@@ -55,24 +55,36 @@ const GerenciarUsuarios: React.FC = () => {
   const API_BASE = API_PREFIX;
 
   useEffect(() => {
+    // Aguarda o token estar disponível para evitar 401 e lista vazia
+    if (!token) return;
     carregarUsuarios();
     carregarPerfis();
-  }, []);
+  }, [token]);
 
   const carregarPerfis = async () => {
     try {
+      if (!token) return;
       const response = await fetch(`${API_BASE}/perfis/`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
 
-      if (!response.ok) throw new Error('Erro ao carregar perfis');
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Erro ao carregar perfis (${response.status}): ${err || 'desconhecido'}`);
+      }
 
       const data = await response.json();
-      setPerfis(data.filter((p: Perfil) => p.ativo));
+      const ativos = data.filter((p: Perfil) => p.ativo);
+      setPerfis(ativos);
+      // Se não houver perfil selecionado ainda, usar o primeiro ativo (ou Operador id=3)
+      if (ativos.length > 0 && !formData.perfil_id) {
+        setFormData((prev) => ({ ...prev, perfil_id: ativos[0].id || 3 }));
+      }
     } catch (error) {
       console.error('Erro ao carregar perfis:', error);
+      // Não bloquear a UI; mantém o valor padrão do form (3 - Operador)
     }
   };
 
@@ -112,7 +124,8 @@ const GerenciarUsuarios: React.FC = () => {
         email: formData.email,
         nome: formData.nome,
         ativo: formData.ativo,
-        usar_2fa: formData.usar_2fa
+        usar_2fa: formData.usar_2fa,
+        perfil_id: formData.perfil_id
       };
 
       // Incluir senha apenas se foi preenchida
@@ -247,21 +260,23 @@ const GerenciarUsuarios: React.FC = () => {
   );
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container px-4 py-8 mx-auto">
       <Toaster position="top-right" richColors />
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Gerenciar Usuários</h1>
-          <p className="text-gray-600 mt-1">Controle de acesso e autenticação</p>
+          <p className="mt-1 text-gray-600">Controle de acesso e autenticação</p>
         </div>
         <button
           onClick={() => {
             resetForm();
+            // Garantir que a lista de perfis esteja carregada ao abrir o modal
+            carregarPerfis();
             setShowModal(true);
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          className="flex items-center gap-2 px-4 py-2 text-white transition-colors bg-blue-600 rounded-lg hover:bg-blue-700"
         >
           <Plus size={20} />
           Novo Usuário
@@ -271,42 +286,42 @@ const GerenciarUsuarios: React.FC = () => {
       {/* Search */}
       <div className="mb-6">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute text-gray-400 transform -translate-y-1/2 left-3 top-1/2" size={20} />
           <input
             type="text"
             placeholder="Buscar por nome, usuário ou email..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
       </div>
 
       {/* Lista de Usuários - Responsiva */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+        <div className="p-8 text-center text-gray-500 bg-white rounded-lg shadow">
           Carregando...
         </div>
       ) : usuariosFiltrados.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+        <div className="p-8 text-center text-gray-500 bg-white rounded-lg shadow">
           Nenhum usuário encontrado
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {usuariosFiltrados.map((usuario) => (
-            <div key={usuario.id} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div key={usuario.id} className="p-4 transition-shadow bg-white rounded-lg shadow hover:shadow-md sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 {/* Info do Usuário */}
-                <div className="flex items-start gap-4 flex-1 min-w-0">
-                  <div className="flex-shrink-0 h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <div className="flex items-start flex-1 min-w-0 gap-4">
+                  <div className="flex items-center justify-center flex-shrink-0 w-12 h-12 bg-blue-100 rounded-full">
                     <User size={24} className="text-blue-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                    <h3 className="text-base font-semibold text-gray-900 truncate sm:text-lg">
                       {usuario.nome}
                     </h3>
                     <p className="text-sm text-gray-500 truncate">@{usuario.username}</p>
-                    <div className="flex items-center text-sm text-gray-600 mt-1 truncate">
+                    <div className="flex items-center mt-1 text-sm text-gray-600 truncate">
                       <Mail size={14} className="mr-1.5 flex-shrink-0 text-gray-400" />
                       <span className="truncate">{usuario.email}</span>
                     </div>
@@ -314,7 +329,7 @@ const GerenciarUsuarios: React.FC = () => {
                 </div>
 
                 {/* Badges e Ações */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
                   {/* Badges */}
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -348,14 +363,14 @@ const GerenciarUsuarios: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => openEditModal(usuario)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      className="p-2 text-blue-600 transition-colors rounded-lg hover:bg-blue-50"
                       title="Editar"
                     >
                       <Edit2 size={18} />
                     </button>
                     <button
                       onClick={() => handleDelete(usuario.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-2 text-red-600 transition-colors rounded-lg hover:bg-red-50"
                       title="Excluir"
                     >
                       <Trash2 size={18} />
@@ -370,9 +385,9 @@ const GerenciarUsuarios: React.FC = () => {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+            <div className="sticky top-0 flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-800">
                 {editingUsuario ? 'Editar Usuário' : 'Novo Usuário'}
               </h2>
@@ -384,7 +399,7 @@ const GerenciarUsuarios: React.FC = () => {
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               {/* Nome Completo */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
                   Nome Completo *
                 </label>
                 <input
@@ -399,7 +414,7 @@ const GerenciarUsuarios: React.FC = () => {
 
               {/* Username */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
                   Nome de Usuário *
                 </label>
                 <input
@@ -412,13 +427,13 @@ const GerenciarUsuarios: React.FC = () => {
                   placeholder="joao.silva"
                 />
                 {editingUsuario && (
-                  <p className="text-xs text-gray-500 mt-1">O username não pode ser alterado</p>
+                  <p className="mt-1 text-xs text-gray-500">O username não pode ser alterado</p>
                 )}
               </div>
 
               {/* Email */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
                   Email *
                 </label>
                 <input
@@ -433,7 +448,7 @@ const GerenciarUsuarios: React.FC = () => {
 
               {/* Senha */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
                   Senha {!editingUsuario && '*'}
                 </label>
                 <div className="relative">
@@ -442,26 +457,26 @@ const GerenciarUsuarios: React.FC = () => {
                     required={!editingUsuario}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder={editingUsuario ? 'Deixe em branco para não alterar' : 'Mínimo 6 caracteres'}
                     minLength={editingUsuario ? 0 : 6}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute text-gray-400 transform -translate-y-1/2 right-3 top-1/2 hover:text-gray-600"
                   >
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
                 </div>
                 {editingUsuario && (
-                  <p className="text-xs text-gray-500 mt-1">Deixe em branco para manter a senha atual</p>
+                  <p className="mt-1 text-xs text-gray-500">Deixe em branco para manter a senha atual</p>
                 )}
               </div>
 
               {/* Perfil */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
                   Perfil de Acesso *
                 </label>
                 <select
@@ -470,19 +485,22 @@ const GerenciarUsuarios: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, perfil_id: parseInt(e.target.value) })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
+                  {perfis.length === 0 && (
+                    <option value={3}>Operador (padrão)</option>
+                  )}
                   {perfis.map((perfil) => (
                     <option key={perfil.id} value={perfil.id}>
                       {perfil.nome}
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="mt-1 text-xs text-gray-500">
                   Define quais funcionalidades o usuário pode acessar no sistema
                 </p>
               </div>
 
               {/* Checkboxes */}
-              <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
+              <div className="p-4 space-y-3 rounded-lg bg-gray-50">
                 <div className="flex items-center">
                   <input
                     type="checkbox"
@@ -510,7 +528,7 @@ const GerenciarUsuarios: React.FC = () => {
                 </div>
                 
                 {formData.usar_2fa && (
-                  <div className="ml-6 mt-2 text-sm text-blue-600 bg-blue-50 p-3 rounded border border-blue-200">
+                  <div className="p-3 mt-2 ml-6 text-sm text-blue-600 border border-blue-200 rounded bg-blue-50">
                     <Shield size={16} className="inline mr-2" />
                     O usuário precisará configurar o 2FA no primeiro login usando o Microsoft Authenticator
                   </div>
@@ -522,13 +540,13 @@ const GerenciarUsuarios: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
                 >
                   {editingUsuario ? 'Salvar Alterações' : 'Criar Usuário'}
                 </button>
