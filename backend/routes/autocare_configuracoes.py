@@ -1,11 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from db import get_db
 from models.autocare_models import Configuracao, Produto
 import hashlib
 import os
+import sys
+import subprocess
+from pathlib import Path
 from decimal import Decimal
+
+# Adicionar o diretório services ao path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'services'))
 
 router = APIRouter(tags=["configuracoes"])
 
@@ -45,6 +51,35 @@ class AplicarMargemResponse(BaseModel):
     success: bool
     produtos_atualizados: int
     mensagem: str
+
+class SystemInfoResponse(BaseModel):
+    """Informações do sistema (disco e memória)"""
+    disco: Dict[str, Any]
+    memoria: Dict[str, Any]
+
+class ServicesStatusResponse(BaseModel):
+    """Status dos serviços da aplicação"""
+    nginx: bool
+    postgresql: bool
+    fastapi: bool
+    venv_ativo: bool
+
+class PostgresInfoResponse(BaseModel):
+    """Informações do banco de dados PostgreSQL"""
+    status: str
+    nome_instancia: Optional[str]
+    tamanho: Optional[str]
+    conexoes_ativas: Optional[int]
+    versao: Optional[str]
+    erro: Optional[str]
+
+class BackupResponse(BaseModel):
+    """Resposta da operação de backup"""
+    sucesso: bool
+    arquivo: Optional[str] = None
+    tamanho_mb: Optional[float] = None
+    mensagem: str
+    erro: Optional[str] = None
 
 # Função auxiliar para hash de senha
 def hash_senha(senha: str) -> str:
@@ -222,3 +257,105 @@ def aplicar_margem_lucro(
         produtos_atualizados=produtos_atualizados,
         mensagem=f"Margem de {dados.margem_lucro}% aplicada em {produtos_atualizados} produto(s)"
     )
+
+# Novos endpoints de monitoramento
+
+@router.get("/sistema/info", response_model=SystemInfoResponse)
+def obter_info_sistema():
+    """Retorna informações do sistema (disco e memória)"""
+    try:
+        from services.system_monitor import get_disk_info, get_memory_info
+        
+        return SystemInfoResponse(
+            disco=get_disk_info(),
+            memoria=get_memory_info()
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao obter informações do sistema: {str(e)}"
+        )
+
+@router.get("/sistema/servicos", response_model=ServicesStatusResponse)
+def obter_status_servicos():
+    """Retorna status dos serviços (NGINX, PostgreSQL, FastAPI, venv)"""
+    try:
+        from services.system_monitor import get_services_status
+        
+        status_dict = get_services_status()
+        return ServicesStatusResponse(**status_dict)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao obter status dos serviços: {str(e)}"
+        )
+
+@router.post("/sistema/verificar-servicos", response_model=ServicesStatusResponse)
+def verificar_e_iniciar_servicos():
+    """Executa o script start_services.sh e retorna o status dos serviços"""
+    try:
+        # Executar script de inicialização
+        script_path = Path(__file__).parent.parent.parent / 'start_services.sh'
+        if script_path.exists():
+            subprocess.run(['bash', str(script_path)], 
+                         capture_output=True, 
+                         text=True, 
+                         timeout=30)
+        
+        # Retornar status atualizado
+        from services.system_monitor import get_services_status
+        status_dict = get_services_status()
+        return ServicesStatusResponse(**status_dict)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao verificar serviços: {str(e)}"
+        )
+
+@router.get("/postgres/info", response_model=PostgresInfoResponse)
+def obter_info_postgres():
+    """Retorna informações do banco de dados PostgreSQL"""
+    try:
+        from services.system_monitor import check_postgres_connection
+        
+        info = check_postgres_connection()
+        return PostgresInfoResponse(**info)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao obter informações do PostgreSQL: {str(e)}"
+        )
+
+@router.post("/postgres/backup", response_model=BackupResponse)
+def criar_backup_postgres(dados: ValidarSenhaRequest, db: Session = Depends(get_db)):
+    """Cria backup do banco de dados PostgreSQL (requer senha do supervisor)"""
+    
+    # Validar senha do supervisor
+    config_senha = db.query(Configuracao).filter(
+        Configuracao.chave == "senha_supervisor"
+    ).first()
+    
+    if not config_senha:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Configuração de senha não encontrada"
+        )
+    
+    senha_hash = hash_senha(dados.senha)
+    if senha_hash != config_senha.valor:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Senha do supervisor inválida"
+        )
+    
+    try:
+        from services.system_monitor import create_database_backup
+        
+        resultado = create_database_backup()
+        return BackupResponse(**resultado)
+    except Exception as e:
+        return BackupResponse(
+            sucesso=False,
+            mensagem="Erro ao criar backup",
+            erro=str(e)
+        )
