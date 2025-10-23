@@ -36,8 +36,8 @@ interface PerfilFormData {
 }
 
 const permissoesLabels: Record<keyof Permissoes, string> = {
-  dashboard_gerencial: 'Dashboard Gerencial',
-  dashboard_operacional: 'Dashboard Operacional',
+  dashboard_gerencial: 'Painel Gerencial',
+  dashboard_operacional: 'Painel Operacional',
   clientes: 'Clientes',
   veiculos: 'Veículos',
   estoque: 'Estoque',
@@ -237,11 +237,11 @@ const GerenciarPerfis: React.FC = () => {
       
       // Se tentar marcar um dashboard e o outro já está marcado, não permitir
       if (key === 'dashboard_gerencial' && novasPermissoes.dashboard_operacional) {
-        toast.error('Não é possível marcar ambos os dashboards. Desmarque o Dashboard Operacional primeiro.');
+        toast.error('Não é possível marcar ambos os painéis. Desmarque o Painel Operacional primeiro.');
         return;
       }
       if (key === 'dashboard_operacional' && novasPermissoes.dashboard_gerencial) {
-        toast.error('Não é possível marcar ambos os dashboards. Desmarque o Dashboard Gerencial primeiro.');
+        toast.error('Não é possível marcar ambos os painéis. Desmarque o Painel Gerencial primeiro.');
         return;
       }
     }
@@ -474,8 +474,8 @@ const GerenciarPerfis: React.FC = () => {
                   <div className="flex items-start gap-2 p-2 mt-2 border border-yellow-200 rounded-md bg-yellow-50">
                     <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-yellow-800">
-                      <strong>Atenção:</strong> Apenas o perfil Administrador pode ter ambos os dashboards habilitados. 
-                      Para outros perfis, escolha apenas um tipo de dashboard.
+                      <strong>Atenção:</strong> Apenas o perfil Administrador pode ter ambos os painéis habilitados. 
+                      Para outros perfis, escolha apenas um tipo de painel.
                     </p>
                   </div>
                 )}
@@ -486,7 +486,7 @@ const GerenciarPerfis: React.FC = () => {
                   <div className="flex items-start gap-2 p-2 mt-2 border border-blue-200 rounded-md bg-blue-50">
                     <AlertTriangle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-blue-800">
-                      <strong>Dica:</strong> Selecione um tipo de dashboard (Gerencial ou Operacional) para permitir acesso ao painel.
+                      <strong>Dica:</strong> Selecione um tipo de painel (Gerencial ou Operacional) para permitir acesso ao dashboard.
                     </p>
                   </div>
                 )}
