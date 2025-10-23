@@ -155,12 +155,48 @@ def atualizar_perfil(
                 detail="Já existe um perfil com este nome"
             )
     
-    # Converter permissões para JSON string se fornecidas
-    # model_dump() já converte Permissoes para dict, então apenas fazemos json.dumps
-    if "permissoes" in update_data and update_data["permissoes"]:
-        print(f"[DEBUG] Permissões antes da conversão: {update_data['permissoes']}")
-        update_data["permissoes"] = json.dumps(update_data["permissoes"])
-        print(f"[DEBUG] Permissões após conversão JSON: {update_data['permissoes']}")
+    # Converter/Mesclar permissões se fornecidas
+    # Observação: garantimos que o payload final seja sempre um JSON string completo,
+    # evitando perda de chaves e problemas de serialização
+    if "permissoes" in update_data:
+        try:
+            # Estado atual no banco
+            atuais = {}
+            try:
+                atuais = json.loads(db_perfil.permissoes) if isinstance(db_perfil.permissoes, str) else (db_perfil.permissoes or {})
+            except Exception as e:
+                print(f"[DEBUG] Falha ao carregar permissoes atuais: {e}. Valor bruto: {db_perfil.permissoes}")
+                atuais = {}
+
+            recebidas = update_data["permissoes"] or {}
+            print(f"[DEBUG] Permissões recebidas (bruto): {recebidas}")
+
+            # Caso venha um objeto Pydantic, converter corretamente
+            try:
+                from pydantic import BaseModel  # import local para evitar custo no módulo
+                if isinstance(recebidas, BaseModel):
+                    recebidas = recebidas.model_dump()
+            except Exception:
+                pass
+
+            # Se por alguma razão vier string JSON, normalizar
+            if isinstance(recebidas, str):
+                try:
+                    recebidas = json.loads(recebidas)
+                except Exception:
+                    print(f"[DEBUG] Permissões recebidas são string não-JSON. Mantendo valor atual. Valor: {recebidas}")
+                    recebidas = {}
+
+            # Mesclar com as atuais (recebidas sobrescrevem atuais)
+            mescladas = {**(atuais or {}), **(recebidas or {})}
+            print(f"[DEBUG] Permissões mescladas: {mescladas}")
+
+            update_data["permissoes"] = json.dumps(mescladas)
+            print(f"[DEBUG] Permissões após conversão JSON: {update_data['permissoes']}")
+        except Exception as e:
+            print(f"[DEBUG] Erro ao preparar permissoes para update: {e}")
+            # Em caso de erro, não atualizar o campo para não corromper
+            update_data.pop("permissoes", None)
     
     # Aplicar atualizações
     for key, value in update_data.items():
