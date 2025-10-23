@@ -18,6 +18,7 @@
 # Uso: ./first_install.sh [opções]
 # Opções:
 #   reset-credentials            Apenas reseta a senha do admin e a senha do supervisor
+#   fix-profiles                 Apenas corrige permissões dos perfis padrão (Admin/Supervisor/Operador)
 # Variáveis opcionais (podem ser passadas no ambiente ou antes do comando):
 #   ADMIN_PASSWORD=...           Senha para o usuário admin (default: admin123)
 #   SUPERVISOR_PASSWORD=...      Senha para o supervisor (default: admin123)
@@ -569,6 +570,57 @@ ON CONFLICT (chave)
 DO NOTHING;
 EOF
 
+        # Ajustar permissões dos perfis padrão (idempotente)
+        sudo -u postgres psql -d "$DB_NAME" << 'EOF'
+-- Atualizar permissoes para Administrador
+UPDATE perfis SET permissoes = '{
+    "dashboard_gerencial": true,
+    "dashboard_operacional": true,
+    "clientes": true,
+    "veiculos": true,
+    "estoque": true,
+    "ordens_servico": true,
+    "fornecedores": true,
+    "relatorios": true,
+    "configuracoes": true,
+    "usuarios": true,
+    "perfis": true
+}'
+WHERE nome = 'Administrador';
+
+-- Atualizar permissoes para Supervisor
+UPDATE perfis SET permissoes = '{
+    "dashboard_gerencial": true,
+    "dashboard_operacional": false,
+    "clientes": true,
+    "veiculos": true,
+    "estoque": true,
+    "ordens_servico": true,
+    "fornecedores": true,
+    "relatorios": true,
+    "configuracoes": false,
+    "usuarios": false,
+    "perfis": false
+}'
+WHERE nome = 'Supervisor';
+
+-- Atualizar permissoes para Operador
+UPDATE perfis SET permissoes = '{
+    "dashboard_gerencial": false,
+    "dashboard_operacional": true,
+    "clientes": false,
+    "veiculos": false,
+    "estoque": true,
+    "ordens_servico": true,
+    "fornecedores": false,
+    "relatorios": false,
+    "configuracoes": false,
+    "usuarios": false,
+    "perfis": false
+}'
+WHERE nome = 'Operador';
+EOF
+
     deactivate || true
 
     log "SUCCESS" "Migrações aplicadas e seeds concluídos (admin e senha_supervisor)."
@@ -642,6 +694,69 @@ DO UPDATE SET valor=EXCLUDED.valor;
 EOF
 
     log "SUCCESS" "Senhas resetadas: admin e supervisor."
+}
+
+# Corrigir permissões dos perfis padrão (sem reinstalar)
+fix_profiles() {
+        log "INFO" "Corrigindo permissões dos perfis padrão..."
+
+        # Garantir PostgreSQL ativo
+        if [ "$INIT_SYSTEM" = "systemd" ]; then
+                sudo systemctl start postgresql 2>/dev/null || true
+        fi
+
+        # Aplicar ajustes idempotentes
+        sudo -u postgres psql -d "$DB_NAME" << 'EOF'
+-- Administrador: tudo habilitado
+UPDATE perfis SET permissoes = '{
+    "dashboard_gerencial": true,
+    "dashboard_operacional": true,
+    "clientes": true,
+    "veiculos": true,
+    "estoque": true,
+    "ordens_servico": true,
+    "fornecedores": true,
+    "relatorios": true,
+    "configuracoes": true,
+    "usuarios": true,
+    "perfis": true
+}', updated_at = NOW()
+WHERE nome = 'Administrador';
+
+-- Supervisor: acesso intermediário, sem configurações/usuários/perfis
+UPDATE perfis SET permissoes = '{
+    "dashboard_gerencial": true,
+    "dashboard_operacional": false,
+    "clientes": true,
+    "veiculos": true,
+    "estoque": true,
+    "ordens_servico": true,
+    "fornecedores": true,
+    "relatorios": true,
+    "configuracoes": false,
+    "usuarios": false,
+    "perfis": false
+}', updated_at = NOW()
+WHERE nome = 'Supervisor';
+
+-- Operador: básico com dashboard operacional
+UPDATE perfis SET permissoes = '{
+    "dashboard_gerencial": false,
+    "dashboard_operacional": true,
+    "clientes": false,
+    "veiculos": false,
+    "estoque": true,
+    "ordens_servico": true,
+    "fornecedores": false,
+    "relatorios": false,
+    "configuracoes": false,
+    "usuarios": false,
+    "perfis": false
+}', updated_at = NOW()
+WHERE nome = 'Operador';
+EOF
+
+        log "SUCCESS" "Permissões de perfis atualizadas."
 }
 
 # Função para configurar frontend
@@ -1123,6 +1238,19 @@ main() {
         # Aplicar reset de senhas
         reset_credentials
         log "SUCCESS" "Operação de reset finalizada."
+        exit $?
+    fi
+
+    # Modo apenas correção de perfis
+    if [ "${1:-}" = "fix-profiles" ]; then
+        log "INFO" "Modo: fix-profiles"
+        check_distribution
+        if ! command_exists psql; then
+            install_postgresql
+        fi
+        setup_database
+        fix_profiles
+        log "SUCCESS" "Perfis corrigidos com sucesso."
         exit $?
     fi
 
