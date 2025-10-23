@@ -66,6 +66,18 @@ const GerenciarUsuarios: React.FC = () => {
       if (!token) return;
       const response = await fetch(`${API_BASE}/perfis/`, { headers: { 'Authorization': `Bearer ${token}` } });
 
+      if (response.status === 404) {
+        // Fallback amigável: popular perfis padrão se a rota não existir no backend
+        const defaults: Perfil[] = [
+          { id: 1, nome: 'Administrador', descricao: 'Acesso total ao sistema', ativo: true },
+          { id: 2, nome: 'Supervisor', descricao: 'Acesso intermediário', ativo: true },
+          { id: 3, nome: 'Operador', descricao: 'Acesso básico', ativo: true },
+        ];
+        setPerfis(defaults);
+        if (!formData.perfil_id) setFormData((prev) => ({ ...prev, perfil_id: 3 }));
+        return;
+      }
+
       if (!response.ok) {
         const err = await response.text();
         throw new Error(`Erro ao carregar perfis (${response.status}): ${err || 'desconhecido'}`);

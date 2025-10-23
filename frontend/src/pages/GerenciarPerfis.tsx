@@ -50,6 +50,7 @@ const permissoesLabels: Record<keyof Permissoes, string> = {
 const GerenciarPerfis: React.FC = () => {
   const [perfis, setPerfis] = useState<Perfil[]>([]);
   const [loading, setLoading] = useState(true);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingPerfil, setEditingPerfil] = useState<Perfil | null>(null);
@@ -89,12 +90,30 @@ const GerenciarPerfis: React.FC = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
+      if (response.status === 404) {
+        // Backend ainda não publicou a rota; mostrar perfis padrão apenas para consulta
+        setUsingFallback(true);
+        setPerfis([
+          { id: 1, nome: 'Administrador', descricao: 'Acesso total ao sistema', ativo: true, editavel: false, created_at: new Date().toISOString(), permissoes: {
+            dashboard: true, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: true, usuarios: true, perfis: true
+          } },
+          { id: 2, nome: 'Supervisor', descricao: 'Acesso intermediário', ativo: true, editavel: true, created_at: new Date().toISOString(), permissoes: {
+            dashboard: true, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: false, usuarios: false, perfis: false
+          } },
+          { id: 3, nome: 'Operador', descricao: 'Acesso básico', ativo: true, editavel: true, created_at: new Date().toISOString(), permissoes: {
+            dashboard: true, clientes: false, veiculos: false, estoque: true, ordens_servico: true, fornecedores: false, relatorios: false, configuracoes: false, usuarios: false, perfis: false
+          } },
+        ]);
+        return;
+      }
+
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Erro ao carregar perfis (${response.status}): ${text || 'desconhecido'}`);
       }
 
       const data = await response.json();
+      setUsingFallback(false);
       setPerfis(data);
     } catch (error: any) {
       console.error('Erro:', error);
@@ -214,21 +233,21 @@ const GerenciarPerfis: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container px-4 py-8 mx-auto">
       <Toaster position="top-right" richColors />
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Gerenciar Perfis de Acesso</h1>
-          <p className="text-gray-600 mt-1">Controle as permissões por perfil de usuário</p>
+          <p className="mt-1 text-gray-600">Controle as permissões por perfil de usuário</p>
         </div>
         <button
           onClick={() => {
             resetForm();
             setShowModal(true);
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          className="flex items-center gap-2 px-4 py-2 text-white transition-colors bg-blue-600 rounded-lg hover:bg-blue-700"
         >
           <Plus size={20} />
           Novo Perfil
@@ -238,30 +257,37 @@ const GerenciarPerfis: React.FC = () => {
       {/* Search */}
       <div className="mb-6">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute text-gray-400 transform -translate-y-1/2 left-3 top-1/2" size={20} />
           <input
             type="text"
             placeholder="Buscar por nome ou descrição..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
       </div>
 
+      {/* Aviso de fallback */}
+      {usingFallback && (
+        <div className="p-3 mb-4 text-sm text-yellow-800 border border-yellow-300 rounded bg-yellow-50">
+          Mostrando perfis padrão porque a rota /autocare-api/perfis ainda não está disponível no backend. Reinicie o serviço do backend para aplicar as rotas e o seed de permissões.
+        </div>
+      )}
+
       {/* Lista de Perfis */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+        <div className="p-8 text-center text-gray-500 bg-white rounded-lg shadow">
           Carregando...
         </div>
       ) : perfisFiltrados.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+        <div className="p-8 text-center text-gray-500 bg-white rounded-lg shadow">
           Nenhum perfil encontrado
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {perfisFiltrados.map((perfil) => (
-            <div key={perfil.id} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-6">
+            <div key={perfil.id} className="p-6 transition-shadow bg-white rounded-lg shadow hover:shadow-md">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className={`flex-shrink-0 h-12 w-12 rounded-full flex items-center justify-center ${
@@ -291,14 +317,14 @@ const GerenciarPerfis: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => openEditModal(perfil)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      className="p-2 text-blue-600 transition-colors rounded-lg hover:bg-blue-50"
                       title="Editar"
                     >
                       <Edit2 size={18} />
                     </button>
                     <button
                       onClick={() => handleDelete(perfil.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-2 text-red-600 transition-colors rounded-lg hover:bg-red-50"
                       title="Excluir"
                     >
                       <Trash2 size={18} />
@@ -308,13 +334,13 @@ const GerenciarPerfis: React.FC = () => {
               </div>
 
               {perfil.descricao && (
-                <p className="text-sm text-gray-600 mb-4">{perfil.descricao}</p>
+                <p className="mb-4 text-sm text-gray-600">{perfil.descricao}</p>
               )}
 
-              <div className="border-t pt-4">
+              <div className="pt-4 border-t">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-700">Permissões</span>
-                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                  <span className="px-2 py-1 text-xs text-blue-800 bg-blue-100 rounded-full">
                     {contarPermissoes(perfil.permissoes)}/{Object.keys(permissoesLabels).length}
                   </span>
                 </div>
@@ -336,9 +362,9 @@ const GerenciarPerfis: React.FC = () => {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+            <div className="sticky top-0 flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-800">
                 {editingPerfil ? `Editar Perfil: ${editingPerfil.nome}` : 'Novo Perfil'}
               </h2>
@@ -349,7 +375,7 @@ const GerenciarPerfis: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               {editingPerfil && !editingPerfil.editavel && (
-                <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2">
+                <div className="flex items-center gap-2 px-4 py-3 text-red-800 border border-red-200 rounded-lg bg-red-50">
                   <ShieldAlert size={20} />
                   <span className="text-sm font-medium">Este perfil é do sistema e não pode ser editado</span>
                 </div>
@@ -357,7 +383,7 @@ const GerenciarPerfis: React.FC = () => {
 
               {/* Nome */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
                   Nome do Perfil *
                 </label>
                 <input
@@ -373,7 +399,7 @@ const GerenciarPerfis: React.FC = () => {
 
               {/* Descrição */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block mb-1 text-sm font-medium text-gray-700">
                   Descrição
                 </label>
                 <textarea
@@ -388,13 +414,13 @@ const GerenciarPerfis: React.FC = () => {
 
               {/* Permissões */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
+                <label className="block mb-3 text-sm font-medium text-gray-700">
                   Permissões de Acesso *
                 </label>
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-2">
+                <div className="p-4 space-y-2 border border-gray-200 rounded-lg bg-gray-50">
                   {Object.entries(permissoesLabels).map(([key, label]) => (
-                    <div key={key} className="flex items-center justify-between p-2 hover:bg-white rounded transition-colors">
-                      <label htmlFor={`perm-${key}`} className="text-sm font-medium text-gray-700 cursor-pointer flex-1">
+                    <div key={key} className="flex items-center justify-between p-2 transition-colors rounded hover:bg-white">
+                      <label htmlFor={`perm-${key}`} className="flex-1 text-sm font-medium text-gray-700 cursor-pointer">
                         {label}
                       </label>
                       <input
@@ -408,13 +434,13 @@ const GerenciarPerfis: React.FC = () => {
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="mt-2 text-xs text-gray-500">
                   {contarPermissoes(formData.permissoes)} de {Object.keys(permissoesLabels).length} permissões selecionadas
                 </p>
               </div>
 
               {/* Ativo */}
-              <div className="flex items-center bg-gray-50 p-3 rounded-lg">
+              <div className="flex items-center p-3 rounded-lg bg-gray-50">
                 <input
                   type="checkbox"
                   id="ativo"
@@ -433,14 +459,14 @@ const GerenciarPerfis: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   Cancelar
                 </button>
                 {(!editingPerfil || editingPerfil.editavel) && (
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2"
+                    className="flex items-center gap-2 px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
                   >
                     <Save size={18} />
                     {editingPerfil ? 'Salvar Alterações' : 'Criar Perfil'}
