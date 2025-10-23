@@ -44,6 +44,20 @@ class PerfilUpdate(BaseModel):
     descricao: Optional[str] = None
     permissoes: Optional[Permissoes] = None
     ativo: Optional[bool] = None
+    
+    @model_validator(mode='after')
+    def validar_dashboards(self):
+        """Valida que apenas o perfil Administrador pode ter ambos os dashboards"""
+        # Só validar se o nome foi fornecido e as permissões foram fornecidas
+        if (self.nome and self.permissoes and
+            self.nome != 'Administrador' and 
+            self.permissoes.dashboard_gerencial and 
+            self.permissoes.dashboard_operacional):
+            raise ValueError(
+                'Apenas o perfil Administrador pode ter ambos os dashboards habilitados. '
+                'Para outros perfis, escolha apenas Dashboard Gerencial ou Dashboard Operacional.'
+            )
+        return self
 
 class PerfilResponse(PerfilBase):
     id: int

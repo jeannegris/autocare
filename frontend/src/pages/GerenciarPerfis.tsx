@@ -136,6 +136,12 @@ const GerenciarPerfis: React.FC = () => {
 
       const method = editingPerfil ? 'PUT' : 'POST';
 
+      console.log('[DEBUG] Enviando dados para o backend:', {
+        url,
+        method,
+        formData
+      });
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -149,6 +155,9 @@ const GerenciarPerfis: React.FC = () => {
         const error = await response.json();
         throw new Error(error.detail || 'Erro ao salvar perfil');
       }
+
+      const result = await response.json();
+      console.log('[DEBUG] Resposta do backend:', result);
 
       toast.success(editingPerfil ? 'Perfil atualizado!' : 'Perfil criado!');
       setShowModal(false);

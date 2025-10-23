@@ -139,6 +139,10 @@ def atualizar_perfil(
     # Atualizar campos fornecidos
     update_data = perfil_update.model_dump(exclude_unset=True)
     
+    # Log para debug
+    print(f"[DEBUG] Dados recebidos para atualização do perfil {perfil_id}:")
+    print(f"[DEBUG] update_data = {update_data}")
+    
     # Se está atualizando nome, verificar se já existe
     if "nome" in update_data and update_data["nome"] != db_perfil.nome:
         existing_perfil = db.query(Perfil).filter(
@@ -154,14 +158,22 @@ def atualizar_perfil(
     # Converter permissões para JSON string se fornecidas
     # model_dump() já converte Permissoes para dict, então apenas fazemos json.dumps
     if "permissoes" in update_data and update_data["permissoes"]:
+        print(f"[DEBUG] Permissões antes da conversão: {update_data['permissoes']}")
         update_data["permissoes"] = json.dumps(update_data["permissoes"])
+        print(f"[DEBUG] Permissões após conversão JSON: {update_data['permissoes']}")
     
     # Aplicar atualizações
     for key, value in update_data.items():
         setattr(db_perfil, key, value)
     
+    # Log antes do commit
+    print(f"[DEBUG] Valor no banco antes do commit - permissoes: {db_perfil.permissoes}")
+    
     db.commit()
     db.refresh(db_perfil)
+    
+    # Log após commit
+    print(f"[DEBUG] Valor no banco após commit - permissoes: {db_perfil.permissoes}")
     
     # Retornar com permissões convertidas
     perfil_dict = {
@@ -174,6 +186,8 @@ def atualizar_perfil(
         "created_at": db_perfil.created_at,
         "updated_at": db_perfil.updated_at
     }
+    
+    print(f"[DEBUG] Resposta sendo enviada: {perfil_dict}")
     
     return perfil_dict
 
