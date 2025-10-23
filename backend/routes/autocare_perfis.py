@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+import logging
 from sqlalchemy.orm import Session
 from typing import List
 import json
@@ -11,6 +12,7 @@ from schemas.schemas_perfil import (
 from routes.autocare_auth import get_current_user
 
 router = APIRouter()
+logger = logging.getLogger('autocare')
 
 @router.get("/", response_model=List[PerfilResponse])
 def listar_perfis(
@@ -142,6 +144,10 @@ def atualizar_perfil(
     # Log para debug
     print(f"[DEBUG] Dados recebidos para atualização do perfil {perfil_id}:")
     print(f"[DEBUG] update_data = {update_data}")
+    try:
+        logger.debug(f"Dados recebidos para atualização do perfil {perfil_id}: {update_data}")
+    except Exception:
+        pass
     
     # Se está atualizando nome, verificar se já existe
     if "nome" in update_data and update_data["nome"] != db_perfil.nome:
@@ -170,6 +176,10 @@ def atualizar_perfil(
 
             recebidas = update_data["permissoes"] or {}
             print(f"[DEBUG] Permissões recebidas (bruto): {recebidas}")
+            try:
+                logger.debug(f"Permissões recebidas (bruto): {recebidas}")
+            except Exception:
+                pass
 
             # Caso venha um objeto Pydantic, converter corretamente
             try:
@@ -190,11 +200,23 @@ def atualizar_perfil(
             # Mesclar com as atuais (recebidas sobrescrevem atuais)
             mescladas = {**(atuais or {}), **(recebidas or {})}
             print(f"[DEBUG] Permissões mescladas: {mescladas}")
+            try:
+                logger.debug(f"Permissões mescladas: {mescladas}")
+            except Exception:
+                pass
 
             update_data["permissoes"] = json.dumps(mescladas)
             print(f"[DEBUG] Permissões após conversão JSON: {update_data['permissoes']}")
+            try:
+                logger.debug(f"Permissões após conversão JSON: {update_data['permissoes']}")
+            except Exception:
+                pass
         except Exception as e:
             print(f"[DEBUG] Erro ao preparar permissoes para update: {e}")
+            try:
+                logger.exception(f"Erro ao preparar permissoes para update: {e}")
+            except Exception:
+                pass
             # Em caso de erro, não atualizar o campo para não corromper
             update_data.pop("permissoes", None)
     
@@ -204,12 +226,20 @@ def atualizar_perfil(
     
     # Log antes do commit
     print(f"[DEBUG] Valor no banco antes do commit - permissoes: {db_perfil.permissoes}")
+    try:
+        logger.debug(f"Valor no banco antes do commit - permissoes: {db_perfil.permissoes}")
+    except Exception:
+        pass
     
     db.commit()
     db.refresh(db_perfil)
     
     # Log após commit
     print(f"[DEBUG] Valor no banco após commit - permissoes: {db_perfil.permissoes}")
+    try:
+        logger.debug(f"Valor no banco após commit - permissoes: {db_perfil.permissoes}")
+    except Exception:
+        pass
     
     # Retornar com permissões convertidas
     perfil_dict = {
@@ -224,6 +254,10 @@ def atualizar_perfil(
     }
     
     print(f"[DEBUG] Resposta sendo enviada: {perfil_dict}")
+    try:
+        logger.debug(f"Resposta sendo enviada: {perfil_dict}")
+    except Exception:
+        pass
     
     return perfil_dict
 

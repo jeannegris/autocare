@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from contextlib import asynccontextmanager
 import os
+import logging
+from logging.handlers import RotatingFileHandler
 
 # Importações locais
 from db import create_tables, get_db, SessionLocal
@@ -18,10 +20,45 @@ from routes import autocare_sugestoes_manutencao
 from models.autocare_models import Perfil, Usuario
 import json
 
+def _configure_logging():
+    """Configura logging para arquivo com rotação e nível DEBUG.
+    Logs irão para backend/logs/autocare-app.log
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        logs_dir = os.path.join(base_dir, 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+
+        log_path = os.path.join(logs_dir, 'autocare-app.log')
+
+        logger = logging.getLogger('autocare')
+        logger.setLevel(logging.DEBUG)
+
+        # Evitar handlers duplicados em reload
+        if not any(isinstance(h, RotatingFileHandler) for h in logger.handlers):
+            handler = RotatingFileHandler(log_path, maxBytes=5*1024*1024, backupCount=3)
+            formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(name)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+
+        # Também elevar nível dos loggers Uvicorn para aparecerem no arquivo
+        for name in ('uvicorn', 'uvicorn.error', 'uvicorn.access'):
+            lg = logging.getLogger(name)
+            lg.setLevel(logging.INFO)
+            if not any(isinstance(h, RotatingFileHandler) for h in lg.handlers):
+                handler = RotatingFileHandler(log_path, maxBytes=5*1024*1024, backupCount=3)
+                formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(name)s - %(message)s')
+                handler.setFormatter(formatter)
+                lg.addHandler(handler)
+    except Exception as e:
+        print(f"⚠️  Aviso: falha ao configurar logging de arquivo: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Iniciando AutoCenter API...")
+    _configure_logging()
     create_tables()
     
     # Inicializa RBAC (perfis e vínculos) caso ainda não exista
