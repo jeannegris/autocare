@@ -204,6 +204,21 @@ def atualizar_perfil(
                 logger.debug(f"Permissões mescladas: {mescladas}")
             except Exception:
                 pass
+            
+            # Validar dashboards APÓS mesclar, com contexto completo
+            # Usar o nome do update_data se fornecido, senão usar o nome atual do banco
+            nome_para_validar = update_data.get("nome", db_perfil.nome)
+            dash_ger = mescladas.get("dashboard_gerencial", False)
+            dash_oper = mescladas.get("dashboard_operacional", False)
+            
+            print(f"[DEBUG] Validando dashboards para perfil '{nome_para_validar}': gerencial={dash_ger}, operacional={dash_oper}")
+            
+            if (nome_para_validar != 'Administrador' and dash_ger and dash_oper):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail='Apenas o perfil Administrador pode ter ambos os dashboards habilitados. '
+                           'Para outros perfis, escolha apenas Dashboard Gerencial ou Dashboard Operacional.'
+                )
 
             update_data["permissoes"] = json.dumps(mescladas)
             print(f"[DEBUG] Permissões após conversão JSON: {update_data['permissoes']}")
@@ -211,6 +226,9 @@ def atualizar_perfil(
                 logger.debug(f"Permissões após conversão JSON: {update_data['permissoes']}")
             except Exception:
                 pass
+        except HTTPException:
+            # Re-raise HTTPException para não ser capturado pelo except genérico
+            raise
         except Exception as e:
             print(f"[DEBUG] Erro ao preparar permissoes para update: {e}")
             try:
