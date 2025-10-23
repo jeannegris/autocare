@@ -21,14 +21,32 @@ def dashboard_resumo(db: Session = Depends(get_db)):
     total_veiculos = db.query(Veiculo).filter(Veiculo.ativo == True).count()
     total_produtos = db.query(Produto).filter(Produto.ativo == True).count()
     
-    # Ordens de serviço
-    ordens_abertas = db.query(OrdemServico).filter(OrdemServico.status == "Aberta").count()
-    ordens_andamento = db.query(OrdemServico).filter(OrdemServico.status == "Em Andamento").count()
+    # Ordens de serviço - ajustado para status correto em maiúsculas
+    ordens_abertas = db.query(OrdemServico).filter(
+        or_(OrdemServico.status == "PENDENTE", OrdemServico.status == "Aberta")
+    ).count()
+    ordens_andamento = db.query(OrdemServico).filter(
+        or_(
+            OrdemServico.status == "EM_ANDAMENTO",
+            OrdemServico.status == "Em Andamento",
+            OrdemServico.status == "AGUARDANDO_PECA",
+            OrdemServico.status == "AGUARDANDO_APROVACAO"
+        )
+    ).count()
+    
+    # Início e fim do mês atual
+    inicio_mes = date.today().replace(day=1)
+    if date.today().month == 12:
+        fim_mes = date(date.today().year + 1, 1, 1)
+    else:
+        fim_mes = date.today().replace(month=date.today().month + 1, day=1)
+    
+    # Ordens concluídas no mês
     ordens_concluidas_mes = db.query(OrdemServico).filter(
         and_(
-            OrdemServico.status == "Concluída",
-            func.extract('month', OrdemServico.data_conclusao) == datetime.now().month,
-            func.extract('year', OrdemServico.data_conclusao) == datetime.now().year
+            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+            OrdemServico.data_conclusao >= inicio_mes,
+            OrdemServico.data_conclusao < fim_mes
         )
     ).count()
     
@@ -40,14 +58,49 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         )
     ).count()
     
-    # Faturamento do mês
-    inicio_mes = date.today().replace(day=1)
+    # Faturamento do mês (soma de valor_total das OS concluídas)
     faturamento_mes = db.query(func.sum(OrdemServico.valor_total)).filter(
         and_(
-            OrdemServico.status == "Concluída",
-            OrdemServico.data_conclusao >= inicio_mes
+            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+            OrdemServico.data_conclusao >= inicio_mes,
+            OrdemServico.data_conclusao < fim_mes
         )
     ).scalar() or Decimal('0.00')
+    
+    # Faturamento hoje
+    hoje = date.today()
+    faturamento_hoje = db.query(func.sum(OrdemServico.valor_total)).filter(
+        and_(
+            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+            func.date(OrdemServico.data_conclusao) == hoje
+        )
+    ).scalar() or Decimal('0.00')
+    
+    # Quantidade de serviços realizados no mês (conta OS do tipo SERVICO ou VENDA_SERVICO)
+    # Cada OS conta +1, independente de quantos serviços foram realizados
+    servicos_realizados = db.query(func.count(OrdemServico.id)).filter(
+        and_(
+            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+            OrdemServico.data_conclusao >= inicio_mes,
+            OrdemServico.data_conclusao < fim_mes,
+            or_(
+                OrdemServico.tipo_ordem == "SERVICO",
+                OrdemServico.tipo_ordem == "VENDA_SERVICO"
+            )
+        )
+    ).scalar() or 0
+    
+    # Quantidade de peças vendidas no mês (soma dos itens tipo PRODUTO)
+    pecas_vendidas = db.query(func.sum(ItemOrdem.quantidade)).join(
+        OrdemServico, ItemOrdem.ordem_id == OrdemServico.id
+    ).filter(
+        and_(
+            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+            OrdemServico.data_conclusao >= inicio_mes,
+            OrdemServico.data_conclusao < fim_mes,
+            or_(ItemOrdem.tipo == "PRODUTO", ItemOrdem.tipo == "produto")
+        )
+    ).scalar() or 0
     
     return {
         "contadores": {
@@ -62,39 +115,128 @@ def dashboard_resumo(db: Session = Depends(get_db)):
             "concluidas_mes": ordens_concluidas_mes
         },
         "financeiro": {
-            "faturamento_mes": float(faturamento_mes)
+            "faturamento_mes": float(faturamento_mes),
+            "faturamento_hoje": float(faturamento_hoje),
+            "servicos_realizados": int(servicos_realizados),
+            "pecas_vendidas": int(pecas_vendidas)
         }
     }
 
 @router.get("/vendas-mensais")
 def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
-    """Vendas mensais por ano para gráfico"""
+    """Vendas mensais por ano para gráfico - separadas por tipo"""
     if not ano:
         ano = datetime.now().year
     
-    vendas = db.query(
-        func.extract('month', OrdemServico.data_conclusao).label('mes'),
-        func.sum(OrdemServico.valor_total).label('total')
-    ).filter(
-        and_(
-            OrdemServico.status == "Concluída",
-            func.extract('year', OrdemServico.data_conclusao) == ano
-        )
-    ).group_by(func.extract('month', OrdemServico.data_conclusao)).all()
+    # Calcular os últimos 12 meses
+    hoje = date.today()
+    mes_atual = hoje.month
+    ano_atual = hoje.year
     
-    # Criar array com todos os meses (1-12)
-    vendas_por_mes = [0] * 12
-    for venda in vendas:
-        mes_idx = int(venda.mes) - 1
-        vendas_por_mes[mes_idx] = float(venda.total or 0)
+    # Arrays para armazenar dados dos últimos 12 meses
+    vendas_totais = []
+    vendas_servicos = []
+    vendas_pecas = []
+    descontos_mensais = []
+    labels_meses = []
+    
+    # Iterar pelos últimos 12 meses
+    for i in range(11, -1, -1):
+        # Calcular mês e ano
+        mes = mes_atual - i
+        ano_calculo = ano_atual
+        
+        if mes <= 0:
+            mes += 12
+            ano_calculo -= 1
+        
+        # Definir início e fim do mês
+        inicio_mes = date(ano_calculo, mes, 1)
+        if mes == 12:
+            fim_mes = date(ano_calculo + 1, 1, 1)
+        else:
+            fim_mes = date(ano_calculo, mes + 1, 1)
+        
+        # Total de vendas do mês
+        total_mes = db.query(func.sum(OrdemServico.valor_total)).filter(
+            and_(
+                or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+                OrdemServico.data_conclusao >= inicio_mes,
+                OrdemServico.data_conclusao < fim_mes
+            )
+        ).scalar() or Decimal('0.00')
+        
+        # Receita líquida de serviços e peças (descontos alocados proporcionalmente entre serviço e peças por OS)
+        total_bruto_expr = (func.coalesce(OrdemServico.valor_servico, 0) + func.coalesce(OrdemServico.valor_pecas, 0))
+        desconto_total_expr = func.coalesce(OrdemServico.valor_desconto, func.coalesce(OrdemServico.desconto, 0))
+
+        # Parte do desconto atribuída ao serviço
+        desconto_serv_expr = func.coalesce(
+            (func.coalesce(OrdemServico.valor_servico, 0) / func.nullif(total_bruto_expr, 0)) * desconto_total_expr,
+            0
+        )
+        serv_net_expr = func.coalesce(OrdemServico.valor_servico, 0) - desconto_serv_expr
+
+        # Parte do desconto atribuída às peças
+        desconto_pec_expr = func.coalesce(
+            (func.coalesce(OrdemServico.valor_pecas, 0) / func.nullif(total_bruto_expr, 0)) * desconto_total_expr,
+            0
+        )
+        pec_net_expr = func.coalesce(OrdemServico.valor_pecas, 0) - desconto_pec_expr
+
+        servicos_mes = db.query(func.sum(serv_net_expr)).filter(
+            and_(
+                or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+                OrdemServico.data_conclusao >= inicio_mes,
+                OrdemServico.data_conclusao < fim_mes,
+                or_(
+                    OrdemServico.tipo_ordem == "SERVICO",
+                    OrdemServico.tipo_ordem == "VENDA_SERVICO"
+                )
+            )
+        ).scalar() or Decimal('0.00')
+
+        pecas_mes = db.query(func.sum(pec_net_expr)).filter(
+            and_(
+                or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+                OrdemServico.data_conclusao >= inicio_mes,
+                OrdemServico.data_conclusao < fim_mes,
+                or_(
+                    OrdemServico.tipo_ordem == "VENDA",
+                    OrdemServico.tipo_ordem == "VENDA_SERVICO"
+                )
+            )
+        ).scalar() or Decimal('0.00')
+        
+        # Descontos totais do mês (usar valor_desconto se existir, senão desconto legado)
+        descontos_mes = db.query(
+            func.sum(
+                func.coalesce(OrdemServico.valor_desconto, func.coalesce(OrdemServico.desconto, 0))
+            )
+        ).filter(
+            and_(
+                or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+                OrdemServico.data_conclusao >= inicio_mes,
+                OrdemServico.data_conclusao < fim_mes
+            )
+        ).scalar() or Decimal('0.00')
+
+        # Adicionar aos arrays
+        vendas_totais.append(float(total_mes))
+        vendas_servicos.append(float(servicos_mes))
+        vendas_pecas.append(float(pecas_mes))
+        descontos_mensais.append(float(descontos_mes))
+        
+        # Nome do mês
+        nomes_meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        labels_meses.append(nomes_meses[mes - 1])
     
     return {
-        "ano": ano,
-        "meses": [
-            "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-            "Jul", "Ago", "Set", "Out", "Nov", "Dez"
-        ],
-        "vendas": vendas_por_mes
+        "meses": labels_meses,
+        "vendas": vendas_totais,
+        "vendas_servicos": vendas_servicos,
+        "vendas_pecas": vendas_pecas,
+        "descontos": descontos_mensais
     }
 
 @router.get("/ordens-status")
@@ -105,13 +247,55 @@ def ordens_por_status(db: Session = Depends(get_db)):
         func.count(OrdemServico.id).label('quantidade')
     ).group_by(OrdemServico.status).all()
     
-    return [
-        {
-            "status": item.status,
-            "quantidade": item.quantidade
-        }
-        for item in status_count
-    ]
+    # Mapeamento de cores baseado no padrão do sistema
+    cores_status = {
+        "PENDENTE": "rgba(234, 179, 8, 0.8)",  # yellow-500
+        "EM_ANDAMENTO": "rgba(59, 130, 246, 0.8)",  # blue-500
+        "AGUARDANDO_PECA": "rgba(249, 115, 22, 0.8)",  # orange-500
+        "AGUARDANDO_APROVACAO": "rgba(168, 85, 247, 0.8)",  # purple-500
+        "CONCLUIDA": "rgba(34, 197, 94, 0.8)",  # green-500
+        "CANCELADA": "rgba(239, 68, 68, 0.8)",  # red-500
+    }
+    
+    # Labels em português
+    labels_status = {
+        "PENDENTE": "Pendente",
+        "EM_ANDAMENTO": "Em Andamento",
+        "AGUARDANDO_PECA": "Aguardando Peça",
+        "AGUARDANDO_APROVACAO": "Aguardando Aprovação",
+        "CONCLUIDA": "Concluída",
+        "CANCELADA": "Cancelada",
+        # Compatibilidade com valores antigos
+        "Aberta": "Pendente",
+        "Em Andamento": "Em Andamento",
+        "Concluída": "Concluída",
+    }
+    
+    resultado = []
+    for item in status_count:
+        status = item.status
+        # Normalizar status para o padrão atual
+        if status in labels_status:
+            label = labels_status[status]
+            # Converter para o padrão atual se necessário
+            status_normalizado = status if status in cores_status else {
+                "Aberta": "PENDENTE",
+                "Em Andamento": "EM_ANDAMENTO",
+                "Concluída": "CONCLUIDA"
+            }.get(status, status)
+        else:
+            label = status
+            status_normalizado = status
+        
+        cor = cores_status.get(status_normalizado, "rgba(107, 114, 128, 0.8)")  # gray-500 default
+        
+        resultado.append({
+            "status": label,
+            "quantidade": item.quantidade,
+            "cor": cor
+        })
+    
+    return resultado
 
 @router.get("/produtos-mais-vendidos")
 def produtos_mais_vendidos(

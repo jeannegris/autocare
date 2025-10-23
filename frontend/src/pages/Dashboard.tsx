@@ -65,6 +65,7 @@ interface ChartData {
   receitas: number[];
   servicos: number[];
   vendaPecas: number[];
+  descontos?: number[];
 }
 
 interface Aniversariante {
@@ -145,27 +146,25 @@ function useDashboardData(): { data: DashboardData | null, isLoading: boolean, e
       ordensAbertas: resumoQuery.data?.ordens_servico?.abertas || 0,
       ordensHoje: resumoQuery.data?.ordens_servico?.em_andamento || 0,
       receitaMensal: resumoQuery.data?.financeiro?.faturamento_mes || 0,
-      receitaDiaria: 0,
+      receitaDiaria: resumoQuery.data?.financeiro?.faturamento_hoje || 0,
       crescimentoMensal: 0,
-      servicosRealizados: resumoQuery.data?.ordens_servico?.concluidas_mes || 0,
-      pecasVendidas: 0,
+      servicosRealizados: resumoQuery.data?.financeiro?.servicos_realizados || 0,
+      pecasVendidas: resumoQuery.data?.financeiro?.pecas_vendidas || 0,
       alertasEstoque: resumoQuery.data?.contadores?.produtos_estoque_baixo || 0
     },
     chartData: {
-      labels: vendasQuery.data?.meses || ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'],
-      receitas: vendasQuery.data?.vendas || [0, 0, 0, 0, 0, 0],
-      servicos: [15, 18, 22, 19, 25, resumoQuery.data?.ordens_servico?.concluidas_mes || 0],
-      vendaPecas: [8500, 9200, 7800, 11500, 10200, 12800] // TODO: dados reais
+      labels: vendasQuery.data?.meses || ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+      receitas: vendasQuery.data?.vendas || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      servicos: vendasQuery.data?.vendas_servicos || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      vendaPecas: vendasQuery.data?.vendas_pecas || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      descontos: vendasQuery.data?.descontos || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     aniversariantes: alertasQuery.data?.alertas?.filter((a: any) => a.tipo === 'aniversario') || [],
     manutencoesPendentes: alertasQuery.data?.alertas?.filter((a: any) => a.tipo === 'manutencao') || [],
     ordemStatus: ordensStatusQuery.data?.map((item: any) => ({
       status: item.status,
       quantidade: item.quantidade,
-      cor: item.status === 'Aberta' ? 'rgba(59, 130, 246, 0.8)' :
-           item.status === 'Em Andamento' ? 'rgba(245, 158, 11, 0.8)' :
-           item.status === 'Concluída' ? 'rgba(34, 197, 94, 0.8)' :
-           'rgba(107, 114, 128, 0.8)'
+      cor: item.cor
     })) || []
   };
 
@@ -178,14 +177,14 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        <div className="w-32 h-32 border-b-2 border-blue-600 rounded-full animate-spin"></div>
       </div>
     )
   }
 
   if (error || !data) {
     return (
-      <div className="bg-red-50 p-4 rounded-md">
+      <div className="p-4 rounded-md bg-red-50">
         <p className="text-red-800">Erro ao carregar dados do dashboard</p>
       </div>
     )
@@ -206,7 +205,7 @@ export default function Dashboard() {
       },
       {
         label: 'Receita Serviços (R$)',
-        data: chartData.servicos.map((v: number) => v * 120), // Mock: servicos * valor médio
+        data: chartData.servicos,
         borderColor: 'rgb(16, 185, 129)',
         backgroundColor: 'rgba(16, 185, 129, 0.1)',
         tension: 0.4,
@@ -217,6 +216,14 @@ export default function Dashboard() {
         borderColor: 'rgb(245, 158, 11)',
         backgroundColor: 'rgba(245, 158, 11, 0.1)',
         tension: 0.4,
+      },
+      {
+        label: 'Descontos (R$)',
+        data: chartData.descontos || [],
+        borderColor: 'rgb(239, 68, 68)',
+        backgroundColor: 'rgba(239, 68, 68, 0.05)',
+        borderDash: [6, 6],
+        tension: 0.3,
       },
     ],
   }
@@ -246,26 +253,26 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard AutoCenter</h1>
-          <p className="text-gray-600 mt-1">Visão geral do seu negócio</p>
+          <p className="mt-1 text-gray-600">Visão geral do seu negócio</p>
         </div>
         <div className="flex items-center text-sm text-gray-500">
-          <Calendar className="h-4 w-4 mr-2" />
+          <Calendar className="w-4 h-4 mr-2" />
           {format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
         </div>
       </div>
 
       {/* Stats Grid - Primeira linha */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-white overflow-hidden shadow rounded-lg border-l-4 border-blue-500">
+        <div className="overflow-hidden bg-white border-l-4 border-blue-500 rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <Users className="h-8 w-8 text-blue-600" />
+                <Users className="w-8 h-8 text-blue-600" />
               </div>
-              <div className="ml-5 w-0 flex-1">
+              <div className="flex-1 w-0 ml-5">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
                     Total Clientes
@@ -279,13 +286,13 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg border-l-4 border-green-500">
+        <div className="overflow-hidden bg-white border-l-4 border-green-500 rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <Car className="h-8 w-8 text-green-600" />
+                <Car className="w-8 h-8 text-green-600" />
               </div>
-              <div className="ml-5 w-0 flex-1">
+              <div className="flex-1 w-0 ml-5">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
                     Veículos Cadastrados
@@ -299,13 +306,13 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg border-l-4 border-yellow-500">
+        <div className="overflow-hidden bg-white border-l-4 border-yellow-500 rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <Package className="h-8 w-8 text-yellow-600" />
+                <Package className="w-8 h-8 text-yellow-600" />
               </div>
-              <div className="ml-5 w-0 flex-1">
+              <div className="flex-1 w-0 ml-5">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
                     Peças em Estoque
@@ -314,8 +321,8 @@ export default function Dashboard() {
                     {stats.totalPecasEstoque}
                   </dd>
                   {stats.alertasEstoque > 0 && (
-                    <dd className="text-xs text-red-600 flex items-center mt-1">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
+                    <dd className="flex items-center mt-1 text-xs text-red-600">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
                       {stats.alertasEstoque} com estoque baixo
                     </dd>
                   )}
@@ -325,13 +332,13 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg border-l-4 border-purple-500">
+        <div className="overflow-hidden bg-white border-l-4 border-purple-500 rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <Wrench className="h-8 w-8 text-purple-600" />
+                <Wrench className="w-8 h-8 text-purple-600" />
               </div>
-              <div className="ml-5 w-0 flex-1">
+              <div className="flex-1 w-0 ml-5">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
                     Ordens Abertas
@@ -339,7 +346,7 @@ export default function Dashboard() {
                   <dd className="text-2xl font-bold text-gray-900">
                     {stats.ordensAbertas}
                   </dd>
-                  <dd className="text-xs text-gray-600 mt-1">
+                  <dd className="mt-1 text-xs text-gray-600">
                     {stats.ordensHoje} hoje
                   </dd>
                 </dl>
@@ -351,7 +358,7 @@ export default function Dashboard() {
 
       {/* Stats Grid - Segunda linha */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
+        <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -362,9 +369,9 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center">
                 {stats.crescimentoMensal >= 0 ? (
-                  <TrendingUp className="h-5 w-5 text-green-500" />
+                  <TrendingUp className="w-5 h-5 text-green-500" />
                 ) : (
-                  <TrendingDown className="h-5 w-5 text-red-500" />
+                  <TrendingDown className="w-5 h-5 text-red-500" />
                 )}
                 <span className={`ml-1 text-sm font-medium ${
                   stats.crescimentoMensal >= 0 ? 'text-green-600' : 'text-red-600'
@@ -379,7 +386,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
+        <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -387,14 +394,14 @@ export default function Dashboard() {
                 <p className="text-3xl font-bold text-gray-900">{stats.servicosRealizados}</p>
               </div>
               <div className="flex-shrink-0">
-                <Settings className="h-8 w-8 text-indigo-600" />
+                <Settings className="w-8 h-8 text-indigo-600" />
               </div>
             </div>
             <div className="mt-3 text-xs text-gray-600">Este mês</div>
           </div>
         </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
+        <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -402,7 +409,7 @@ export default function Dashboard() {
                 <p className="text-3xl font-bold text-gray-900">{stats.pecasVendidas}</p>
               </div>
               <div className="flex-shrink-0">
-                <BarChart3 className="h-8 w-8 text-orange-600" />
+                <BarChart3 className="w-8 h-8 text-orange-600" />
               </div>
             </div>
             <div className="mt-3 text-xs text-gray-600">Este mês</div>
@@ -413,30 +420,30 @@ export default function Dashboard() {
       {/* Alertas e Notificações */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Aniversariantes */}
-        <div className="bg-white overflow-hidden shadow rounded-lg">
+        <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center mb-4">
-              <Cake className="h-5 w-5 text-pink-600 mr-2" />
-              <h3 className="text-lg leading-6 font-medium text-gray-900">
+              <Cake className="w-5 h-5 mr-2 text-pink-600" />
+              <h3 className="text-lg font-medium leading-6 text-gray-900">
                 Aniversariantes
               </h3>
             </div>
             <div className="space-y-3">
               {aniversariantes.map((alerta: Aniversariante, index: number) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-pink-50 rounded-md">
+                <div key={index} className="flex items-center justify-between p-3 rounded-md bg-pink-50">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{alerta.titulo}</p>
                     <p className="text-xs text-gray-600">{alerta.descricao}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-pink-600 font-medium">
+                    <p className="text-xs font-medium text-pink-600">
                       {alerta.data}
                     </p>
                   </div>
                 </div>
               ))}
               {aniversariantes.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">
+                <p className="py-4 text-sm text-center text-gray-500">
                   Nenhum aniversariante próximo
                 </p>
               )}
@@ -445,17 +452,17 @@ export default function Dashboard() {
         </div>
 
         {/* Manutenções Vencendo */}
-        <div className="bg-white overflow-hidden shadow rounded-lg">
+        <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
             <div className="flex items-center mb-4">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
-              <h3 className="text-lg leading-6 font-medium text-gray-900">
+              <AlertTriangle className="w-5 h-5 mr-2 text-yellow-600" />
+              <h3 className="text-lg font-medium leading-6 text-gray-900">
                 Manutenções Próximas
               </h3>
             </div>
             <div className="space-y-3">
               {manutencoesPendentes.map((manutencao: ManutencaoPendente, index: number) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-yellow-50 rounded-md">
+                <div key={index} className="flex items-center justify-between p-3 rounded-md bg-yellow-50">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{manutencao.titulo}</p>
                     <p className="text-xs text-gray-600">{manutencao.descricao}</p>
@@ -466,7 +473,7 @@ export default function Dashboard() {
                   <div className="text-right">
                     {manutencao.km_atual && manutencao.km_proximo && (
                       <>
-                        <p className="text-xs text-yellow-600 font-medium">
+                        <p className="text-xs font-medium text-yellow-600">
                           {Math.max(0, manutencao.km_proximo - manutencao.km_atual)} km restantes
                         </p>
                         <p className="text-xs text-gray-500">
@@ -478,7 +485,7 @@ export default function Dashboard() {
                 </div>
               ))}
               {manutencoesPendentes.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">
+                <p className="py-4 text-sm text-center text-gray-500">
                   Nenhuma manutenção próxima
                 </p>
               )}
@@ -489,21 +496,21 @@ export default function Dashboard() {
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="bg-white overflow-hidden shadow rounded-lg lg:col-span-2">
+        <div className="overflow-hidden bg-white rounded-lg shadow lg:col-span-2">
           <div className="p-5">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Receitas dos Últimos 6 Meses
+            <h3 className="mb-4 text-lg font-medium leading-6 text-gray-900">
+              Receitas dos Últimos 12 Meses
             </h3>
             <Line data={revenueChartData} options={chartOptions} />
           </div>
         </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
+        <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+            <h3 className="mb-4 text-lg font-medium leading-6 text-gray-900">
               Status das Ordens de Serviço
             </h3>
-            <div className="h-64 flex items-center justify-center">
+            <div className="flex items-center justify-center h-64">
               <Doughnut 
                 data={ordersChartData} 
                 options={{
