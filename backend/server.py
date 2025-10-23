@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 import os
 
 # Importações locais
-from db import create_tables, get_db
+from db import create_tables, get_db, SessionLocal
 from config import DEBUG, ALLOWED_ORIGINS, UPLOAD_FOLDER
 
 # Importar rotas
@@ -15,12 +15,87 @@ from routes import autocare_auth, autocare_usuarios, autocare_perfis, autocare_c
 from routes import autocare_estoque, autocare_ordens, autocare_fornecedores
 from routes import autocare_relatorios, autocare_dashboard, autocare_configuracoes
 from routes import autocare_sugestoes_manutencao
+from models.autocare_models import Perfil, Usuario
+import json
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Iniciando AutoCenter API...")
     create_tables()
+    
+    # Inicializa RBAC (perfis e vínculos) caso ainda não exista
+    try:
+        db = SessionLocal()
+        # Seed de perfis padrão se necessário
+        perfis_count = db.query(Perfil).count()
+        if perfis_count == 0:
+            print("🔧 Inicializando perfis padrão (Administrador, Supervisor, Operador)...")
+            permissoes_admin = json.dumps({
+                "dashboard": True,
+                "clientes": True,
+                "veiculos": True,
+                "estoque": True,
+                "ordens_servico": True,
+                "fornecedores": True,
+                "relatorios": True,
+                "configuracoes": True,
+                "usuarios": True,
+                "perfis": True,
+            })
+            permissoes_supervisor = json.dumps({
+                "dashboard": True,
+                "clientes": True,
+                "veiculos": True,
+                "estoque": True,
+                "ordens_servico": True,
+                "fornecedores": True,
+                "relatorios": True,
+                "configuracoes": False,
+                "usuarios": False,
+                "perfis": False,
+            })
+            permissoes_operador = json.dumps({
+                "dashboard": True,
+                "clientes": False,
+                "veiculos": False,
+                "estoque": True,
+                "ordens_servico": True,
+                "fornecedores": False,
+                "relatorios": False,
+                "configuracoes": False,
+                "usuarios": False,
+                "perfis": False,
+            })
+
+            db.add_all([
+                Perfil(id=1, nome="Administrador", descricao="Acesso total ao sistema", permissoes=permissoes_admin, ativo=True, editavel=False),
+                Perfil(id=2, nome="Supervisor", descricao="Acesso intermediário ao sistema", permissoes=permissoes_supervisor, ativo=True, editavel=True),
+                Perfil(id=3, nome="Operador", descricao="Acesso básico ao sistema", permissoes=permissoes_operador, ativo=True, editavel=True),
+            ])
+            db.commit()
+
+        # Garantir que todos os usuários tenham um perfil atribuído
+        usuarios_sem_perfil = db.query(Usuario).filter((Usuario.perfil_id == None)).all()  # type: ignore
+        for u in usuarios_sem_perfil:
+            u.perfil_id = 3  # Operador por padrão
+        if usuarios_sem_perfil:
+            db.commit()
+
+        # Garantir que o usuário "admin" esteja vinculado ao perfil Administrador
+        admin = db.query(Usuario).filter(Usuario.username == "admin").first()
+        if admin and admin.perfil_id != 1:
+            print("🔐 Vinculando usuário 'admin' ao perfil Administrador...")
+            admin.perfil_id = 1
+            db.commit()
+    except Exception as e:
+        # Não bloquear a inicialização do app por erro de seed; apenas logar
+        print(f"⚠️  Aviso: falha ao inicializar perfis/usuários padrão: {e}")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
     
     # Criar diretório de uploads se não existir
     if not os.path.exists(UPLOAD_FOLDER):
