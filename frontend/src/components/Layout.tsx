@@ -22,7 +22,7 @@ interface LayoutProps {
 }
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'dashboard' },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'dashboard_gerencial', permissionAlt: 'dashboard_operacional' },
   { name: 'Clientes', href: '/clientes', icon: Users, permission: 'clientes' },
   { name: 'Veículos', href: '/veiculos', icon: Car, permission: 'veiculos' },
   { name: 'Estoque', href: '/estoque', icon: Package, permission: 'estoque' },
@@ -40,28 +40,30 @@ export default function Layout({ children }: LayoutProps) {
   const { user, logout, hasPermission } = useAuth()
 
   // Filtrar navegação baseado nas permissões do usuário
-  const filteredNavigation = navigation.filter(item => hasPermission(item.permission))
+  const filteredNavigation = navigation.filter(item => 
+    hasPermission(item.permission) || (item.permissionAlt && hasPermission(item.permissionAlt))
+  )
 
   return (
-    <div className="h-screen flex overflow-hidden bg-gray-100">
+    <div className="flex h-screen overflow-hidden bg-gray-100">
       {/* Sidebar */}
       <div className={`${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       } fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col`}>
         <div className="flex items-center justify-between h-16 px-4 border-b">
           <div className="flex items-center">
-            <Wrench className="h-8 w-8 text-blue-600" />
+            <Wrench className="w-8 h-8 text-blue-600" />
             <span className="ml-2 text-xl font-bold text-gray-900">AutoCare</span>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden"
           >
-            <X className="h-6 w-6" />
+            <X className="w-6 h-6" />
           </button>
         </div>
         
-        <nav className="mt-5 flex-1 px-2 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-2 mt-5 space-y-1 overflow-y-auto">
           {filteredNavigation.map((item) => {
             const isActive = location.pathname === item.href
             return (
@@ -87,12 +89,12 @@ export default function Layout({ children }: LayoutProps) {
         </nav>
 
         {/* User info e Logout na parte inferior */}
-        <div className="border-t border-gray-200 p-4">
+        <div className="p-4 border-t border-gray-200">
           <div className="flex items-center mb-2">
-            <div className="flex-shrink-0 bg-gray-200 rounded-full p-2">
-              <User className="h-5 w-5 text-gray-600" />
+            <div className="flex-shrink-0 p-2 bg-gray-200 rounded-full">
+              <User className="w-5 h-5 text-gray-600" />
             </div>
-            <div className="ml-3 flex-1 min-w-0">
+            <div className="flex-1 min-w-0 ml-3">
               <p className="text-sm font-medium text-gray-900 truncate">
                 {user?.nome || 'Usuário'}
               </p>
@@ -103,9 +105,9 @@ export default function Layout({ children }: LayoutProps) {
           </div>
           <button
             onClick={logout}
-            className="w-full flex items-center px-2 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
+            className="flex items-center w-full px-2 py-2 text-sm font-medium text-red-600 transition-colors rounded-md hover:bg-red-50"
           >
-            <LogOut className="mr-3 h-5 w-5" />
+            <LogOut className="w-5 h-5 mr-3" />
             Sair
           </button>
         </div>
@@ -122,17 +124,17 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Main content */}
-      <div className="flex flex-col w-0 flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1 w-0 overflow-hidden">
         <div className="lg:hidden">
-          <div className="flex items-center justify-between h-16 bg-white shadow px-4">
+          <div className="flex items-center justify-between h-16 px-4 bg-white shadow">
             <button
               onClick={() => setSidebarOpen(true)}
               className="text-gray-500 hover:text-gray-900"
             >
-              <Menu className="h-6 w-6" />
+              <Menu className="w-6 h-6" />
             </button>
             <div className="flex items-center">
-              <Wrench className="h-8 w-8 text-blue-600" />
+              <Wrench className="w-8 h-8 text-blue-600" />
               <span className="ml-2 text-xl font-bold text-gray-900">AutoCare</span>
             </div>
             <button
@@ -140,14 +142,14 @@ export default function Layout({ children }: LayoutProps) {
               className="text-gray-500 hover:text-red-600"
               title="Sair"
             >
-              <LogOut className="h-5 w-5" />
+              <LogOut className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <main className="flex-1 relative overflow-y-auto focus:outline-none">
+        <main className="relative flex-1 overflow-y-auto focus:outline-none">
           <div className="py-6">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+            <div className="px-4 mx-auto max-w-7xl sm:px-6 md:px-8">
               {children}
             </div>
           </div>

@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI):
         if perfis_count == 0:
             print("🔧 Inicializando perfis padrão (Administrador, Supervisor, Operador)...")
             permissoes_admin = json.dumps({
-                "dashboard": True,
+                "dashboard_gerencial": True,
+                "dashboard_operacional": True,
                 "clientes": True,
                 "veiculos": True,
                 "estoque": True,
@@ -44,7 +45,8 @@ async def lifespan(app: FastAPI):
                 "perfis": True,
             })
             permissoes_supervisor = json.dumps({
-                "dashboard": True,
+                "dashboard_gerencial": True,
+                "dashboard_operacional": False,
                 "clientes": True,
                 "veiculos": True,
                 "estoque": True,
@@ -56,7 +58,8 @@ async def lifespan(app: FastAPI):
                 "perfis": False,
             })
             permissoes_operador = json.dumps({
-                "dashboard": True,
+                "dashboard_gerencial": False,
+                "dashboard_operacional": True,
                 "clientes": False,
                 "veiculos": False,
                 "estoque": True,

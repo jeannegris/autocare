@@ -28,6 +28,7 @@ import {
 import { format } from 'date-fns'
 import { apiFetch } from '../lib/api'
 import { ptBR } from 'date-fns/locale'
+import { useAuth } from '../contexts/AuthContext'
 
 // Registrar componentes do Chart.js
 ChartJS.register(
@@ -173,6 +174,10 @@ function useDashboardData(): { data: DashboardData | null, isLoading: boolean, e
 
 export default function Dashboard() {
   const { data, isLoading, error } = useDashboardData()
+  const { hasPermission } = useAuth()
+
+  // Verificar se o usuário tem permissão gerencial (pode ver valores de receita)
+  const temPermissaoGerencial = hasPermission('dashboard_gerencial')
 
   if (isLoading) {
     return (
@@ -358,33 +363,35 @@ export default function Dashboard() {
 
       {/* Stats Grid - Segunda linha */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="overflow-hidden bg-white rounded-lg shadow">
-          <div className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Receita Mensal</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  R$ {(stats.receitaMensal != null ? stats.receitaMensal : 0).toLocaleString('pt-BR')}
-                </p>
+        {temPermissaoGerencial && (
+          <div className="overflow-hidden bg-white rounded-lg shadow">
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Receita Mensal</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    R$ {(stats.receitaMensal != null ? stats.receitaMensal : 0).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <div className="flex items-center">
+                  {stats.crescimentoMensal >= 0 ? (
+                    <TrendingUp className="w-5 h-5 text-green-500" />
+                  ) : (
+                    <TrendingDown className="w-5 h-5 text-red-500" />
+                  )}
+                  <span className={`ml-1 text-sm font-medium ${
+                    stats.crescimentoMensal >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {stats.crescimentoMensal > 0 ? '+' : ''}{stats.crescimentoMensal}%
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center">
-                {stats.crescimentoMensal >= 0 ? (
-                  <TrendingUp className="w-5 h-5 text-green-500" />
-                ) : (
-                  <TrendingDown className="w-5 h-5 text-red-500" />
-                )}
-                <span className={`ml-1 text-sm font-medium ${
-                  stats.crescimentoMensal >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {stats.crescimentoMensal > 0 ? '+' : ''}{stats.crescimentoMensal}%
-                </span>
+              <div className="mt-3 text-xs text-gray-600">
+                Receita hoje: R$ {(stats.receitaDiaria != null ? stats.receitaDiaria : 0).toLocaleString('pt-BR')}
               </div>
-            </div>
-            <div className="mt-3 text-xs text-gray-600">
-              Receita hoje: R$ {(stats.receitaDiaria != null ? stats.receitaDiaria : 0).toLocaleString('pt-BR')}
             </div>
           </div>
-        </div>
+        )}
 
         <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
@@ -495,15 +502,17 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="overflow-hidden bg-white rounded-lg shadow lg:col-span-2">
-          <div className="p-5">
-            <h3 className="mb-4 text-lg font-medium leading-6 text-gray-900">
-              Receitas dos Últimos 12 Meses
-            </h3>
-            <Line data={revenueChartData} options={chartOptions} />
+      <div className={`grid grid-cols-1 gap-5 ${temPermissaoGerencial ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
+        {temPermissaoGerencial && (
+          <div className="overflow-hidden bg-white rounded-lg shadow lg:col-span-2">
+            <div className="p-5">
+              <h3 className="mb-4 text-lg font-medium leading-6 text-gray-900">
+                Receitas dos Últimos 12 Meses
+              </h3>
+              <Line data={revenueChartData} options={chartOptions} />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">

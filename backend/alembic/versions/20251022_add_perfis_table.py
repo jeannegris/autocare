@@ -48,7 +48,8 @@ def upgrade() -> None:
     
     # Perfil Administrador - todas as permissões
     permissoes_admin = json.dumps({
-        "dashboard": True,
+        "dashboard_gerencial": True,
+        "dashboard_operacional": True,
         "clientes": True,
         "veiculos": True,
         "estoque": True,
@@ -62,7 +63,8 @@ def upgrade() -> None:
     
     # Perfil Supervisor - permissões intermediárias
     permissoes_supervisor = json.dumps({
-        "dashboard": True,
+        "dashboard_gerencial": True,
+        "dashboard_operacional": False,
         "clientes": True,
         "veiculos": True,
         "estoque": True,
@@ -76,7 +78,8 @@ def upgrade() -> None:
     
     # Perfil Operador - permissões básicas
     permissoes_operador = json.dumps({
-        "dashboard": True,
+        "dashboard_gerencial": False,
+        "dashboard_operacional": True,
         "clientes": False,
         "veiculos": False,
         "estoque": True,

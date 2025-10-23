@@ -1,11 +1,12 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, Dict
 from datetime import datetime
 import json
 
 # Schema para as permissões
 class Permissoes(BaseModel):
-    dashboard: bool = False
+    dashboard_gerencial: bool = False
+    dashboard_operacional: bool = False
     clientes: bool = False
     veiculos: bool = False
     estoque: bool = False
@@ -22,6 +23,18 @@ class PerfilBase(BaseModel):
     descricao: Optional[str] = None
     permissoes: Permissoes
     ativo: Optional[bool] = True
+    
+    @model_validator(mode='after')
+    def validar_dashboards(self):
+        """Valida que apenas o perfil Administrador pode ter ambos os dashboards"""
+        if (self.nome != 'Administrador' and 
+            self.permissoes.dashboard_gerencial and 
+            self.permissoes.dashboard_operacional):
+            raise ValueError(
+                'Apenas o perfil Administrador pode ter ambos os dashboards habilitados. '
+                'Para outros perfis, escolha apenas Dashboard Gerencial ou Dashboard Operacional.'
+            )
+        return self
 
 class PerfilCreate(PerfilBase):
     pass

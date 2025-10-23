@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { API_PREFIX } from '../lib/config';
-import { Plus, Search, Edit2, Trash2, Shield, ShieldAlert, ShieldCheck, X, Save } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Shield, ShieldAlert, ShieldCheck, X, Save, AlertTriangle } from 'lucide-react';
 
 interface Permissoes {
-  dashboard: boolean;
+  dashboard_gerencial: boolean;
+  dashboard_operacional: boolean;
   clientes: boolean;
   veiculos: boolean;
   estoque: boolean;
@@ -35,7 +36,8 @@ interface PerfilFormData {
 }
 
 const permissoesLabels: Record<keyof Permissoes, string> = {
-  dashboard: 'Dashboard',
+  dashboard_gerencial: 'Dashboard Gerencial',
+  dashboard_operacional: 'Dashboard Operacional',
   clientes: 'Clientes',
   veiculos: 'Veículos',
   estoque: 'Estoque',
@@ -58,7 +60,8 @@ const GerenciarPerfis: React.FC = () => {
     nome: '',
     descricao: '',
     permissoes: {
-      dashboard: false,
+      dashboard_gerencial: false,
+      dashboard_operacional: false,
       clientes: false,
       veiculos: false,
       estoque: false,
@@ -95,13 +98,13 @@ const GerenciarPerfis: React.FC = () => {
         setUsingFallback(true);
         setPerfis([
           { id: 1, nome: 'Administrador', descricao: 'Acesso total ao sistema', ativo: true, editavel: false, created_at: new Date().toISOString(), permissoes: {
-            dashboard: true, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: true, usuarios: true, perfis: true
+            dashboard_gerencial: true, dashboard_operacional: true, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: true, usuarios: true, perfis: true
           } },
           { id: 2, nome: 'Supervisor', descricao: 'Acesso intermediário', ativo: true, editavel: true, created_at: new Date().toISOString(), permissoes: {
-            dashboard: true, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: false, usuarios: false, perfis: false
+            dashboard_gerencial: true, dashboard_operacional: false, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: false, usuarios: false, perfis: false
           } },
           { id: 3, nome: 'Operador', descricao: 'Acesso básico', ativo: true, editavel: true, created_at: new Date().toISOString(), permissoes: {
-            dashboard: true, clientes: false, veiculos: false, estoque: true, ordens_servico: true, fornecedores: false, relatorios: false, configuracoes: false, usuarios: false, perfis: false
+            dashboard_gerencial: false, dashboard_operacional: true, clientes: false, veiculos: false, estoque: true, ordens_servico: true, fornecedores: false, relatorios: false, configuracoes: false, usuarios: false, perfis: false
           } },
         ]);
         return;
@@ -197,7 +200,8 @@ const GerenciarPerfis: React.FC = () => {
       nome: '',
       descricao: '',
       permissoes: {
-        dashboard: false,
+        dashboard_gerencial: false,
+        dashboard_operacional: false,
         clientes: false,
         veiculos: false,
         estoque: false,
@@ -214,12 +218,31 @@ const GerenciarPerfis: React.FC = () => {
   };
 
   const togglePermissao = (key: keyof Permissoes) => {
+    const novasPermissoes = { ...formData.permissoes };
+    const valorAtual = novasPermissoes[key];
+    
+    // Validação especial para dashboards (exceto Administrador)
+    if ((key === 'dashboard_gerencial' || key === 'dashboard_operacional') && 
+        formData.nome !== 'Administrador' && 
+        !valorAtual) { // Tentando marcar (não desmarcar)
+      
+      // Se tentar marcar um dashboard e o outro já está marcado, não permitir
+      if (key === 'dashboard_gerencial' && novasPermissoes.dashboard_operacional) {
+        toast.error('Não é possível marcar ambos os dashboards. Desmarque o Dashboard Operacional primeiro.');
+        return;
+      }
+      if (key === 'dashboard_operacional' && novasPermissoes.dashboard_gerencial) {
+        toast.error('Não é possível marcar ambos os dashboards. Desmarque o Dashboard Gerencial primeiro.');
+        return;
+      }
+    }
+    
+    // Aplicar a mudança
+    novasPermissoes[key] = !valorAtual;
+    
     setFormData({
       ...formData,
-      permissoes: {
-        ...formData.permissoes,
-        [key]: !formData.permissoes[key]
-      }
+      permissoes: novasPermissoes
     });
   };
 
@@ -434,6 +457,31 @@ const GerenciarPerfis: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                
+                {/* Aviso sobre dashboards */}
+                {formData.nome !== 'Administrador' && 
+                 formData.permissoes.dashboard_gerencial && 
+                 formData.permissoes.dashboard_operacional && (
+                  <div className="flex items-start gap-2 p-2 mt-2 border border-yellow-200 rounded-md bg-yellow-50">
+                    <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-yellow-800">
+                      <strong>Atenção:</strong> Apenas o perfil Administrador pode ter ambos os dashboards habilitados. 
+                      Para outros perfis, escolha apenas um tipo de dashboard.
+                    </p>
+                  </div>
+                )}
+                
+                {formData.nome !== 'Administrador' && 
+                 !formData.permissoes.dashboard_gerencial && 
+                 !formData.permissoes.dashboard_operacional && (
+                  <div className="flex items-start gap-2 p-2 mt-2 border border-blue-200 rounded-md bg-blue-50">
+                    <AlertTriangle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-blue-800">
+                      <strong>Dica:</strong> Selecione um tipo de dashboard (Gerencial ou Operacional) para permitir acesso ao painel.
+                    </p>
+                  </div>
+                )}
+                
                 <p className="mt-2 text-xs text-gray-500">
                   {contarPermissoes(formData.permissoes)} de {Object.keys(permissoesLabels).length} permissões selecionadas
                 </p>
