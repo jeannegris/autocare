@@ -249,15 +249,25 @@ def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
             "sincronizados": 0
         }
     
-    # Buscar todos os caminhos de backup já registrados
-    backups_registrados = db.query(BackupLog.caminho_arquivo).filter(
-        BackupLog.caminho_arquivo.isnot(None)
-    ).all()
-    caminhos_registrados = {b[0] for b in backups_registrados}
+    # Buscar todos os registros de backup
+    todos_backups = db.query(BackupLog).all()
+    # Conjunto de caminhos já registrados (apenas não nulos)
+    caminhos_registrados = {b.caminho_arquivo for b in todos_backups if b.caminho_arquivo}
     
     # Encontrar arquivos .sql no diretório
     arquivos_sql = list(backup_path.glob('*.sql'))
     sincronizados = []
+    removidos = []
+
+    # 1) Remover registros cujo arquivo não existe mais ou sem caminho definido
+    caminhos_existentes = {str(p) for p in arquivos_sql}
+    ids_para_remover = []
+    for b in todos_backups:
+        if not b.caminho_arquivo or b.caminho_arquivo not in caminhos_existentes:
+            ids_para_remover.append(b.id)
+    if ids_para_remover:
+        db.query(BackupLog).filter(BackupLog.id.in_(ids_para_remover)).delete(synchronize_session=False)
+        removidos = ids_para_remover[:]
     
     for arquivo in arquivos_sql:
         caminho_completo = str(arquivo)
@@ -313,15 +323,17 @@ def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
             print(f"Erro ao sincronizar {arquivo.name}: {str(e)}")
             continue
     
-    if sincronizados:
+    # Commit em lote para inclusões e remoções
+    if sincronizados or removidos:
         db.commit()
     
     return {
         "sucesso": True,
-        "mensagem": f"{len(sincronizados)} backup(s) órfão(s) sincronizado(s)",
+        "mensagem": f"{len(sincronizados)} sincronizado(s), {len(removidos)} removido(s)",
         "sincronizados": sincronizados,
+        "removidos": removidos,
         "total_arquivos": len(arquivos_sql),
-        "total_registrados": len(caminhos_registrados)
+        "total_registrados": len(caminhos_registrados) - len(removidos) + len(sincronizados)
     }
 
 
