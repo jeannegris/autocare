@@ -3,8 +3,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from pydantic import BaseModel, Field, validator
 from db import get_db
-from models.autocare_models import Configuracao, Produto, Usuario
+from models.autocare_models import Configuracao, Produto, Usuario, BackupLog
 import hashlib
 import os
 import sys
@@ -21,6 +22,102 @@ if services_dir_str not in sys.path:
     sys.path.insert(0, services_dir_str)
 
 router = APIRouter(tags=["configuracoes"])
+security = HTTPBearer(auto_error=False)
+
+# =====================
+# Schemas Pydantic
+# =====================
+
+class ConfiguracaoBase(BaseModel):
+    chave: str
+    valor: str
+    descricao: Optional[str] = None
+    tipo: str = 'string'
+
+class ConfiguracaoCreate(ConfiguracaoBase):
+    pass
+
+class ConfiguracaoUpdate(BaseModel):
+    valor: str
+
+class ConfiguracaoResponse(ConfiguracaoBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class ValidarSenhaRequest(BaseModel):
+    senha: str
+
+class ValidarSenhaResponse(BaseModel):
+    valida: bool
+    mensagem: str
+
+class AplicarMargemRequest(BaseModel):
+    margem_lucro: float = Field(..., gt=0, le=1000, description="Margem de lucro em percentual (0-1000)")
+    senha_supervisor: str
+
+class AplicarMargemResponse(BaseModel):
+    success: bool
+    produtos_atualizados: int
+    mensagem: str
+
+class SystemInfoResponse(BaseModel):
+    """Informações do sistema (disco e memória)"""
+    disco: Dict[str, Any]
+    memoria: Dict[str, Any]
+
+class ServicesStatusResponse(BaseModel):
+    """Status dos serviços da aplicação"""
+    nginx: bool
+    postgresql: bool
+    fastapi: bool
+    venv_ativo: bool
+
+class PostgresInfoResponse(BaseModel):
+    """Informações do banco de dados PostgreSQL"""
+    status: str
+    nome_instancia: Optional[str]
+    tamanho: Optional[str]
+    conexoes_ativas: Optional[int]
+    versao: Optional[str]
+    erro: Optional[str]
+
+class BackupResponse(BaseModel):
+    """Resposta da operação de backup"""
+    sucesso: bool
+    arquivo: Optional[str] = None
+    tamanho_mb: Optional[float] = None
+    hash: Optional[str] = None
+    backup_log_id: Optional[int] = None
+    mensagem: str
+    erro: Optional[str] = None
+
+class BackupLogResponse(BaseModel):
+    id: int
+    data_hora: Optional[str]
+    tipo: Optional[str]
+    tamanho_mb: Optional[float]
+    status: Optional[str]
+    hash_arquivo: Optional[str]
+    caminho_arquivo: Optional[str]
+    criado_por: Optional[str]
+    observacoes: Optional[str]
+    erro_detalhes: Optional[str]
+    class Config:
+        from_attributes = True
+
+class RestaurarBackupRequest(BaseModel):
+    senha: str
+    confirmar: bool = True
+
+class RestaurarBackupResponse(BaseModel):
+    sucesso: bool
+    mensagem: str
+    erro: Optional[str] = None
+
+class DeletarBackupResponse(BaseModel):
+    sucesso: bool
+    mensagem: str
 @router.post("/backups/sincronizar")
 def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
     """
@@ -122,13 +219,7 @@ def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
         'marcados_como_ausentes': marcados_ausentes,
         'diretorios_varridos': [str(p) for p in scan_dirs]
     }
-    erro: Optional[str] = None
-
-
-class DeletarBackupResponse(BaseModel):
-    """Resposta da operação de exclusão"""
-    sucesso: bool
-    mensagem: str
+    
 
 
 # Função auxiliar para hash de senha
@@ -228,116 +319,7 @@ def listar_backups(
     return result
 
 
-@router.post("/backups/sincronizar")
-def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
-    """
-    Sincroniza backups órfãos - registra no BD arquivos de backup que existem no diretório
-    mas não possuem registro no banco de dados
-    """
-    from models.autocare_models import BackupLog
-    from pathlib import Path
-    import os
-    import hashlib
-    import re
-    from datetime import datetime
-    
-    # Determinar diretório de backups
-    backup_dir = os.getenv('AUTOCARE_BACKUP_DIR') or '/var/backups/autocare'
-    backup_path = Path(backup_dir)
-    
-    if not backup_path.exists():
-        return {
-            "sucesso": False,
-            "mensagem": f"Diretório de backups não encontrado: {backup_dir}",
-            "sincronizados": 0
-        }
-    
-    # Buscar todos os registros de backup
-    todos_backups = db.query(BackupLog).all()
-    # Conjunto de caminhos já registrados (apenas não nulos)
-    caminhos_registrados = {b.caminho_arquivo for b in todos_backups if b.caminho_arquivo}
-    
-    # Encontrar arquivos .sql no diretório
-    arquivos_sql = list(backup_path.glob('*.sql'))
-    sincronizados = []
-    removidos = []
-
-    # 1) Remover registros cujo arquivo não existe mais ou sem caminho definido
-    caminhos_existentes = {str(p) for p in arquivos_sql}
-    ids_para_remover = []
-    for b in todos_backups:
-        if not b.caminho_arquivo or b.caminho_arquivo not in caminhos_existentes:
-            ids_para_remover.append(b.id)
-    if ids_para_remover:
-        db.query(BackupLog).filter(BackupLog.id.in_(ids_para_remover)).delete(synchronize_session=False)
-        removidos = ids_para_remover[:]
-    
-    for arquivo in arquivos_sql:
-        caminho_completo = str(arquivo)
-        
-        # Pular se já está registrado
-        if caminho_completo in caminhos_registrados:
-            continue
-        
-        try:
-            # Calcular tamanho
-            tamanho_bytes = arquivo.stat().st_size
-            tamanho_mb = tamanho_bytes / (1024 * 1024)
-            
-            # Calcular hash SHA256
-            sha256_hash = hashlib.sha256()
-            with open(arquivo, "rb") as f:
-                for byte_block in iter(lambda: f.read(4096), b""):
-                    sha256_hash.update(byte_block)
-            hash_arquivo = sha256_hash.hexdigest()
-            
-            # Extrair data do nome do arquivo (formato: autocare_backup_YYYYMMDD_HHMMSS.sql)
-            match = re.search(r'(\d{8})_(\d{6})', arquivo.name)
-            if match:
-                data_str = match.group(1)
-                hora_str = match.group(2)
-                data_hora = datetime.strptime(f"{data_str}{hora_str}", "%Y%m%d%H%M%S")
-            else:
-                # Usar data de modificação do arquivo
-                data_hora = datetime.fromtimestamp(arquivo.stat().st_mtime)
-            
-            # Determinar tipo (órfão = manual por padrão)
-            tipo = 'manual'
-            if 'diario' in arquivo.name.lower():
-                tipo = 'diario'
-            elif 'mensal' in arquivo.name.lower():
-                tipo = 'mensal'
-            
-            # Criar registro no banco
-            novo_backup = BackupLog(
-                data_hora=data_hora,
-                tipo=tipo,
-                tamanho_mb=tamanho_mb,
-                status='sucesso',
-                hash_arquivo=hash_arquivo,
-                caminho_arquivo=caminho_completo,
-                criado_por='sistema',
-                observacoes=f'Sincronizado automaticamente - backup órfão encontrado em {datetime.now().isoformat()}'
-            )
-            db.add(novo_backup)
-            sincronizados.append(arquivo.name)
-            
-        except Exception as e:
-            print(f"Erro ao sincronizar {arquivo.name}: {str(e)}")
-            continue
-    
-    # Commit em lote para inclusões e remoções
-    if sincronizados or removidos:
-        db.commit()
-    
-    return {
-        "sucesso": True,
-        "mensagem": f"{len(sincronizados)} sincronizado(s), {len(removidos)} removido(s)",
-        "sincronizados": sincronizados,
-        "removidos": removidos,
-        "total_arquivos": len(arquivos_sql),
-        "total_registrados": len(caminhos_registrados) - len(removidos) + len(sincronizados)
-    }
+ 
 
 
 @router.post("/backups/{backup_id}/restaurar", response_model=RestaurarBackupResponse)
