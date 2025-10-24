@@ -312,6 +312,18 @@ def verificar_e_iniciar_servicos():
             detail=f"Erro ao verificar serviços: {str(e)}"
         )
 
+# --- Rotas de compatibilidade (aliases) ---
+# Algumas versões antigas do frontend chamavam /configuracoes/servicos (sem /sistema)
+# e /configuracoes/servicos/verificar. Mantemos aliases para evitar 404.
+
+@router.get("/servicos", response_model=ServicesStatusResponse)
+def obter_status_servicos_compat():
+    return obter_status_servicos()
+
+@router.post("/servicos/verificar", response_model=ServicesStatusResponse)
+def verificar_e_iniciar_servicos_compat():
+    return verificar_e_iniciar_servicos()
+
 @router.get("/postgres/info", response_model=PostgresInfoResponse)
 def obter_info_postgres():
     """Retorna informações do banco de dados PostgreSQL"""
