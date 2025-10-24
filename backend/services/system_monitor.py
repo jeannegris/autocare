@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import shutil
 from urllib.parse import urlparse, unquote
 
 
@@ -216,31 +217,38 @@ def check_postgres_connection():
 
 
 def create_database_backup():
-    """Cria backup do banco de dados PostgreSQL"""
+    """Cria backup do banco de dados PostgreSQL.
+    - Diretório de destino:
+      1) AUTOCARE_BACKUP_DIR (se definido)
+      2) /var/backups/autocare (se existir /var/backups ou se puder criar)
+      3) Path.home()/autocare_backups (fallback)
+    Retorna dict com campos: sucesso, arquivo (path absoluto), tamanho_mb, mensagem, erro.
+    """
     try:
         import sys
         import os
         from pathlib import Path
         import datetime
         from dotenv import load_dotenv
-        
+
         # Adicionar o diretório backend ao path
         backend_dir = Path(__file__).parent.parent
         if str(backend_dir) not in sys.path:
             sys.path.insert(0, str(backend_dir))
-        
+
         # Carregar variáveis de ambiente
         load_dotenv(backend_dir / '.env')
-        
+        load_dotenv(backend_dir.parent / '.env')
+
         # Parse DATABASE_URL
         database_url = os.getenv('DATABASE_URL', 'postgresql://autocare:autocare@localhost:5432/autocare')
-        
+
         if database_url.startswith('postgresql://'):
             parts = database_url.replace('postgresql://', '').split('@')
             user_pass = parts[0].split(':')
             host_port_db = parts[1].split('/')
             host_port = host_port_db[0].split(':')
-            
+
             user = user_pass[0]
             password = user_pass[1] if len(user_pass) > 1 else ''
             host = host_port[0]
@@ -252,21 +260,45 @@ def create_database_backup():
             host = os.getenv('POSTGRES_SERVER', 'localhost')
             port = int(os.getenv('POSTGRES_PORT', '5432'))
             database = os.getenv('POSTGRES_DB', 'autocare')
-        
-        # Diretório de backup no home do usuário
-        backup_dir = Path.home() / 'autocare_backups'
-        backup_dir.mkdir(exist_ok=True)
-        
+
+        # Resolver diretório de backup com estratégia de queda
+        env_backup_dir = os.getenv('AUTOCARE_BACKUP_DIR')
+        if env_backup_dir:
+            backup_dir = Path(env_backup_dir)
+        else:
+            preferred = Path('/var/backups/autocare')
+            if preferred.parent.exists():
+                backup_dir = preferred
+            else:
+                backup_dir = Path.home() / 'autocare_backups'
+
+        # Criar diretório (com pais) se necessário
+        try:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # Se falhar (permissão), tentar fallback no cwd/backups
+            fallback_dir = Path.cwd() / 'backups'
+            try:
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                backup_dir = fallback_dir
+            except Exception:
+                # Última tentativa: /tmp/autocare_backups
+                tmp_dir = Path('/tmp/autocare_backups')
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                backup_dir = tmp_dir
+
         # Nome do arquivo de backup com timestamp
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_file = backup_dir / f'autocare_backup_{timestamp}.sql'
-        
+
+        # Localizar binário pg_dump
+        pg_dump_bin = shutil.which('pg_dump') or '/usr/bin/pg_dump'
         # Comando pg_dump
         env = os.environ.copy()
         env['PGPASSWORD'] = password
-        
+
         cmd = [
-            'pg_dump',
+            pg_dump_bin,
             '-h', host,
             '-p', str(port),
             '-U', user,
@@ -274,9 +306,9 @@ def create_database_backup():
             '-F', 'p',  # Plain text format
             '-f', str(backup_file)
         ]
-        
+
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
-        
+
         if result.returncode == 0:
             # Verificar tamanho do arquivo de backup
             file_size = backup_file.stat().st_size / (1024 * 1024)  # MB
@@ -284,13 +316,13 @@ def create_database_backup():
                 'sucesso': True,
                 'arquivo': str(backup_file),
                 'tamanho_mb': round(file_size, 2),
-                'mensagem': f'Backup criado com sucesso: {backup_file.name}'
+                'mensagem': f'Backup criado com sucesso: {backup_file}'
             }
         else:
             return {
                 'sucesso': False,
                 'erro': result.stderr,
-                'mensagem': 'Erro ao criar backup do banco de dados'
+                'mensagem': f'Erro ao criar backup do banco de dados (pg_dump exit {result.returncode})'
             }
     except Exception as e:
         return {

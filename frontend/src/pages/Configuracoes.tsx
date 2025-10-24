@@ -350,7 +350,8 @@ export default function Configuracoes() {
     },
     onSuccess: (data: any) => {
       if (data.sucesso) {
-        toast.success(data.mensagem);
+        const caminho = data.arquivo ? ` (${data.arquivo})` : '';
+        toast.success(`${data.mensagem}${caminho}`);
         setMostrarModalBackup(false);
         setSenhaBackup('');
       } else {
@@ -493,7 +494,7 @@ export default function Configuracoes() {
                   </div>
                   <div className="pt-3 border-t">
                     <p className="mb-2 text-xs text-gray-500">
-                      Backup será salvo em: <strong>~/autocare_backups/</strong>
+                      Backup será salvo em: <strong>/var/backups/autocare/</strong>
                     </p>
                     <button
                       onClick={() => setMostrarModalBackup(true)}
