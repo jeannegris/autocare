@@ -9,6 +9,7 @@ import subprocess
 import json
 import os
 from pathlib import Path
+import sys
 
 
 def get_disk_info():
@@ -72,9 +73,14 @@ def get_services_status():
         services['fastapi'] = False
     
     # Verificar se está em ambiente virtual Python
-    services['venv_ativo'] = hasattr(sys, 'real_prefix') or (
-        hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
-    )
+    try:
+        import sys as _sys
+        venv_ativo = hasattr(_sys, 'real_prefix') or (
+            hasattr(_sys, 'base_prefix') and _sys.base_prefix != _sys.prefix
+        )
+    except Exception:
+        venv_ativo = bool(os.environ.get('VIRTUAL_ENV'))
+    services['venv_ativo'] = venv_ativo
     
     return services
 
