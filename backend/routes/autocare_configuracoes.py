@@ -21,104 +21,107 @@ if services_dir_str not in sys.path:
     sys.path.insert(0, services_dir_str)
 
 router = APIRouter(tags=["configuracoes"])
-security = HTTPBearer(auto_error=False)
+@router.post("/backups/sincronizar")
+def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
+    """
+    Sincroniza registros de backups com o sistema de arquivos:
+      - Adiciona no banco arquivos .sql existentes em diretórios conhecidos que ainda não tenham log.
+      - Marca como erro (arquivo ausente) os logs 'sucesso' cujo arquivo não exista mais.
+    Diretórios varridos: AUTOCARE_BACKUP_DIR, /var/backups/autocare, ~/autocare_backups, /tmp/autocare_backups
+    """
+    from models.autocare_models import BackupLog
+    from pathlib import Path
+    import os
+    import hashlib
+    import re
+    from datetime import datetime
 
-# Schema Pydantic
-from pydantic import BaseModel, Field, validator
+    # Diretórios candidatos
+    dirs = []
+    if os.getenv('AUTOCARE_BACKUP_DIR'):
+        dirs.append(Path(os.getenv('AUTOCARE_BACKUP_DIR')))
+    dirs.append(Path('/var/backups/autocare'))
+    try:
+        dirs.append(Path.home() / 'autocare_backups')
+    except Exception:
+        pass
+    dirs.append(Path('/tmp/autocare_backups'))
 
-class ConfiguracaoBase(BaseModel):
-    chave: str
-    valor: str
-    descricao: Optional[str] = None
-    tipo: str = 'string'
+    # Normalizar e filtrar existentes
+    scan_dirs = [p for p in dirs if isinstance(p, Path) and p.exists()]
 
-class ConfiguracaoCreate(ConfiguracaoBase):
-    pass
+    # Mapear arquivos encontrados
+    found_files = {}
+    for d in scan_dirs:
+        try:
+            for arquivo in d.glob('*.sql'):
+                found_files[str(arquivo)] = arquivo
+        except Exception:
+            continue
 
-class ConfiguracaoUpdate(BaseModel):
-    valor: str
+    # Conjunto de caminhos já registrados
+    registrados_rows = db.query(BackupLog.caminho_arquivo).filter(BackupLog.caminho_arquivo.isnot(None)).all()
+    caminhos_registrados = {r[0] for r in registrados_rows}
 
-class ConfiguracaoResponse(ConfiguracaoBase):
-    id: int
-    
-    class Config:
-        from_attributes = True
+    sincronizados = []
+    # Adicionar arquivos não registrados
+    for caminho, arquivo in found_files.items():
+        if caminho in caminhos_registrados:
+            continue
+        try:
+            tamanho_mb = arquivo.stat().st_size / (1024 * 1024)
+            sha256_hash = hashlib.sha256()
+            with open(arquivo, 'rb') as f:
+                for chunk in iter(lambda: f.read(4096), b''):
+                    sha256_hash.update(chunk)
+            hash_arquivo = sha256_hash.hexdigest()
 
-class ValidarSenhaRequest(BaseModel):
-    senha: str
+            # Extrair data/hora do nome (autocare_backup_YYYYMMDD_HHMMSS.sql) se possível
+            match = re.search(r'(\d{8})_(\d{6})', arquivo.name)
+            if match:
+                data_hora = datetime.strptime(match.group(1) + match.group(2), '%Y%m%d%H%M%S')
+            else:
+                data_hora = datetime.fromtimestamp(arquivo.stat().st_mtime)
 
-class ValidarSenhaResponse(BaseModel):
-    valida: bool
-    mensagem: str
+            novo = BackupLog(
+                data_hora=data_hora,
+                tipo='manual',
+                tamanho_mb=tamanho_mb,
+                status='sucesso',
+                hash_arquivo=hash_arquivo,
+                caminho_arquivo=caminho,
+                criado_por='sistema',
+                observacoes=f'Sincronizado automaticamente em {datetime.now().isoformat()}'
+            )
+            db.add(novo)
+            sincronizados.append(arquivo.name)
+        except Exception as e:
+            print(f"Erro ao sincronizar {arquivo}: {e}")
 
-class AplicarMargemRequest(BaseModel):
-    margem_lucro: float = Field(..., gt=0, le=1000, description="Margem de lucro em percentual (0-1000)")
-    senha_supervisor: str
+    # Marcar logs sucesso com arquivo ausente
+    marcados_ausentes = []
+    logs_sucesso = db.query(BackupLog).filter(BackupLog.status == 'sucesso').all()
+    for log in logs_sucesso:
+        caminho = log.caminho_arquivo or ''
+        if not caminho:
+            continue
+        if not Path(caminho).exists():
+            log.status = 'erro'
+            detalhe = 'Arquivo de backup não encontrado no sistema de arquivos'
+            log.observacoes = f'{(log.observacoes + "; " ) if log.observacoes else ""}{detalhe}'
+            log.erro_detalhes = detalhe
+            marcados_ausentes.append(log.id)
 
-class AplicarMargemResponse(BaseModel):
-    success: bool
-    produtos_atualizados: int
-    mensagem: str
+    if sincronizados or marcados_ausentes:
+        db.commit()
 
-class SystemInfoResponse(BaseModel):
-    """Informações do sistema (disco e memória)"""
-    disco: Dict[str, Any]
-    memoria: Dict[str, Any]
-
-class ServicesStatusResponse(BaseModel):
-    """Status dos serviços da aplicação"""
-    nginx: bool
-    postgresql: bool
-    fastapi: bool
-    venv_ativo: bool
-
-class PostgresInfoResponse(BaseModel):
-    """Informações do banco de dados PostgreSQL"""
-    status: str
-    nome_instancia: Optional[str]
-    tamanho: Optional[str]
-    conexoes_ativas: Optional[int]
-    versao: Optional[str]
-    erro: Optional[str]
-
-class BackupResponse(BaseModel):
-    """Resposta da operação de backup"""
-    sucesso: bool
-    arquivo: Optional[str] = None
-    tamanho_mb: Optional[float] = None
-    hash: Optional[str] = None
-    backup_log_id: Optional[int] = None
-    mensagem: str
-    erro: Optional[str] = None
-
-
-class BackupLogResponse(BaseModel):
-    """Resposta com informações de um log de backup"""
-    id: int
-    data_hora: Optional[str]
-    tipo: Optional[str]
-    tamanho_mb: Optional[float]
-    status: Optional[str]
-    hash_arquivo: Optional[str]
-    caminho_arquivo: Optional[str]
-    criado_por: Optional[str]
-    observacoes: Optional[str]
-    erro_detalhes: Optional[str]
-    
-    class Config:
-        from_attributes = True
-
-
-class RestaurarBackupRequest(BaseModel):
-    """Request para restaurar backup"""
-    senha: str
-    confirmar: bool = True
-
-
-class RestaurarBackupResponse(BaseModel):
-    """Resposta da operação de restauração"""
-    sucesso: bool
-    mensagem: str
+    return {
+        'sucesso': True,
+        'mensagem': f"Sincronização concluída: {len(sincronizados)} adicionados, {len(marcados_ausentes)} marcados como ausentes",
+        'adicionados': sincronizados,
+        'marcados_como_ausentes': marcados_ausentes,
+        'diretorios_varridos': [str(p) for p in scan_dirs]
+    }
     erro: Optional[str] = None
 
 
