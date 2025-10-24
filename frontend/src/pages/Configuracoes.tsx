@@ -465,14 +465,17 @@ export default function Configuracoes() {
       });
     },
     onSuccess: (data: any) => {
-      if (data.sucesso) {
-        toast.success(data.mensagem);
+      console.log('Resposta sincronização:', data);
+      if (data.sucesso !== false) {
+        const msg = data.mensagem || `${data.sincronizados?.length || 0} arquivo(s) sincronizado(s), ${data.removidos?.length || 0} registro(s) órfão(s) removido(s)`;
+        toast.success(msg);
         refetchBackups();
       } else {
         toast.error(data.mensagem || 'Erro ao sincronizar backups');
       }
     },
     onError: (error: any) => {
+      console.error('Erro sincronização:', error);
       toast.error(error.message || 'Erro ao sincronizar backups');
     }
   });
