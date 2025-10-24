@@ -107,24 +107,7 @@ export default function Configuracoes() {
     }
   });
 
-  // Helper: tenta múltiplos caminhos, caindo para o próximo em caso de 404
-  async function fetchWithFallback<T = any>(paths: string[]): Promise<T> {
-    let lastErr: any = null;
-    for (const p of paths) {
-      try {
-        const r = await apiFetch(p);
-        return r as T;
-      } catch (err: any) {
-        lastErr = err;
-        if (err && (err.status === 404 || (err.detail && `${err.detail}`.includes('Not Found')))) {
-          continue; // tenta próximo path
-        }
-        throw err; // outros erros: propagar
-      }
-    }
-    // se todos falharem, relança último erro
-    throw lastErr || new Error('Falha ao buscar dados');
-  }
+  
 
   // Helper: fallback via /health para status básico (compatibilidade)
   async function fetchHealth() {
