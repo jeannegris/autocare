@@ -316,6 +316,17 @@ def verificar_e_iniciar_servicos():
             detail=f"Erro ao verificar serviços: {str(e)}"
         )
 
+# Aliases legados para compatibilidade
+@router.get("/servicos", response_model=ServicesStatusResponse)
+def obter_status_servicos_legacy():
+    """Alias legado para status dos serviços"""
+    return obter_status_servicos()
+
+@router.post("/servicos/verificar", response_model=ServicesStatusResponse)
+def verificar_e_iniciar_servicos_legacy():
+    """Alias legado para verificação/inicialização dos serviços"""
+    return verificar_e_iniciar_servicos()
+
 @router.get("/postgres/info", response_model=PostgresInfoResponse)
 def obter_info_postgres():
     """Retorna informações do banco de dados PostgreSQL"""
