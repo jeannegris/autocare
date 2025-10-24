@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -202,6 +203,37 @@ app.include_router(autocare_relatorios.router, prefix="/autocare-api/relatorios"
 app.include_router(autocare_dashboard.router, prefix="/autocare-api/dashboard", tags=["Dashboard"])
 app.include_router(autocare_configuracoes.router, prefix="/autocare-api/configuracoes", tags=["Configurações"])
 app.include_router(autocare_sugestoes_manutencao.router, prefix="/autocare-api/sugestoes-manutencao", tags=["Sugestões de Manutenção"])
+
+# Middleware de modo manutenção: quando arquivo sentinela existir, bloquear requisições
+@app.middleware("http")
+async def maintenance_mode_guard(request: Request, call_next):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        flag_paths = [
+            os.path.join(base_dir, '.maintenance'),
+            '/tmp/.autocare_maintenance'
+        ]
+        maintenance_on = any(os.path.exists(p) for p in flag_paths)
+        if maintenance_on:
+            path = request.url.path or ''
+            # Permitir apenas endpoints essenciais: health e a própria restauração
+            allowed_prefixes = (
+                '/api/configuracoes/backups/',
+                '/autocare-api/configuracoes/backups/',
+                '/health', '/api/health', '/autocare-api/health',
+                '/openapi.json', '/docs', '/redoc'
+            )
+            if not any(path.startswith(pref) for pref in allowed_prefixes):
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        'detail': 'Sistema em manutenção. Tente novamente em alguns instantes.'
+                    }
+                )
+    except Exception:
+        # Em caso de qualquer erro neste middleware, não bloquear o fluxo normal
+        pass
+    return await call_next(request)
 
 @app.get("/")
 async def root():

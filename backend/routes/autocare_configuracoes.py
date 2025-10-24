@@ -429,13 +429,68 @@ def restaurar_backup(
         except Exception as e:
             print(f"Aviso: Não foi possível encerrar conexões ativas: {str(e)}")
         
+        # MODO MANUTENÇÃO: criar arquivo sentinela para bloquear novas requisições
+        maintenance_flag = backend_dir / '.maintenance'
+        try:
+            maintenance_flag.write_text('maintenance-on')
+        except Exception:
+            # fallback em /tmp
+            maintenance_flag = Path('/tmp/.autocare_maintenance')
+            maintenance_flag.write_text('maintenance-on')
+
         # Localizar binário psql
         psql_bin = shutil.which('psql') or '/usr/bin/psql'
-        
+
         # Comando psql para restaurar
         env = os.environ.copy()
         env['PGPASSWORD'] = password
-        
+
+        # 1) Encerrar conexões ativas (já feito acima via admin_engine), redundância segura
+        # 2) Limpar o schema public para evitar conflitos (DROP SCHEMA CASCADE)
+        try:
+            drop_cmd = [
+                psql_bin,
+                '-h', host,
+                '-p', str(port),
+                '-U', user,
+                '-d', database,
+                '-v', 'ON_ERROR_STOP=1',
+                '-c', "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public; GRANT ALL ON SCHEMA public TO \"%s\";" % user
+            ]
+            drop_res = subprocess.run(drop_cmd, env=env, capture_output=True, text=True, timeout=120)
+            if drop_res.returncode != 0:
+                # Falhou na limpeza do schema: tentar fallback drop de objetos do schema public
+                fallback_sql = (
+                    "DO $$ DECLARE r RECORD; BEGIN "
+                    "FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP "
+                    "EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE'; END LOOP; "
+                    "FOR r IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP "
+                    "EXECUTE 'DROP SEQUENCE IF EXISTS public.' || quote_ident(r.sequence_name) || ' CASCADE'; END LOOP; "
+                    "FOR r IN (SELECT routine_schema, routine_name, specific_name FROM information_schema.routines WHERE specific_schema = 'public') LOOP "
+                    "EXECUTE 'DROP ROUTINE IF EXISTS public.' || quote_ident(r.routine_name) || '() CASCADE'; END LOOP; "
+                    "FOR r IN (SELECT viewname FROM pg_views WHERE schemaname='public') LOOP "
+                    "EXECUTE 'DROP VIEW IF EXISTS public.' || quote_ident(r.viewname) || ' CASCADE'; END LOOP; "
+                    "END $$;"
+                )
+                drop_cmd2 = [
+                    psql_bin, '-h', host, '-p', str(port), '-U', user, '-d', database,
+                    '-v', 'ON_ERROR_STOP=1', '-c', fallback_sql
+                ]
+                drop_res2 = subprocess.run(drop_cmd2, env=env, capture_output=True, text=True, timeout=180)
+                if drop_res2.returncode != 0:
+                    erro_msg = drop_res.stderr + "\n" + drop_res2.stderr if drop_res2.stderr else (drop_res.stderr or 'Falha ao limpar objetos do schema public')
+                    return RestaurarBackupResponse(
+                        sucesso=False,
+                        mensagem='❌ Falha na restauração do backup',
+                        erro=erro_msg[:500]
+                    )
+        except Exception as e:
+            return RestaurarBackupResponse(
+                sucesso=False,
+                mensagem='❌ Falha na restauração do backup',
+                erro=str(e)[:500]
+            )
+
         cmd = [
             psql_bin,
             '-h', host,
@@ -449,12 +504,9 @@ def restaurar_backup(
         
         # Executar restauração com timeout de 300 segundos (5 minutos)
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
-        
+
         if result.returncode == 0:
-            # Registrar restauração bem-sucedida
-            backup.observacoes = f"Restaurado em {datetime.now().isoformat()}"
-            db.commit()
-            
+            # Sucesso na restauração
             return RestaurarBackupResponse(
                 sucesso=True,
                 mensagem=f"✅ Backup restaurado com sucesso! O banco de dados foi restaurado para o estado de {backup.data_hora.strftime('%d/%m/%Y às %H:%M:%S') if backup.data_hora else 'backup'}"
@@ -473,6 +525,13 @@ def restaurar_backup(
             mensagem="Erro ao restaurar backup",
             erro=str(e)
         )
+    finally:
+        # Desativar modo manutenção (sempre tentar remover)
+        try:
+            if 'maintenance_flag' in locals() and maintenance_flag.exists():
+                maintenance_flag.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 @router.delete("/backups/{backup_id}", response_model=DeletarBackupResponse)

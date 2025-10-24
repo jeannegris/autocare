@@ -1692,6 +1692,23 @@ export default function Configuracoes() {
           </div>
         </div>
       )}
+
+      {/* Overlay de modo manutenção/restauração */}
+      {mutationRestaurar.isPending && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-md p-6 mx-4 text-center bg-white rounded-lg shadow-2xl">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 bg-orange-100 rounded-full">
+              <AlertTriangle className="w-6 h-6 text-orange-600" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-800">Sistema em modo manutenção</h3>
+            <p className="mb-4 text-sm text-gray-600">Estamos encerrando conexões e aplicando o backup selecionado. Por favor, aguarde...</p>
+            <div className="w-full h-2 mb-3 overflow-hidden bg-gray-200 rounded-full">
+              <div className="w-full h-2 bg-orange-600 rounded-full animate-pulse"></div>
+            </div>
+            <p className="text-xs text-gray-500">Você será notificado automaticamente ao término com sucesso ou falha.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
