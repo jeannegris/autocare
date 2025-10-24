@@ -10,8 +10,12 @@ import subprocess
 from pathlib import Path
 from decimal import Decimal
 
-# Adicionar o diretório services ao path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'services'))
+# Adicionar o diretório 'services' ao path para imports locais
+base_dir = Path(__file__).parent.parent
+services_dir = base_dir / 'services'
+services_dir_str = str(services_dir)
+if services_dir_str not in sys.path:
+    sys.path.insert(0, services_dir_str)
 
 router = APIRouter(tags=["configuracoes"])
 
@@ -280,8 +284,8 @@ def obter_info_sistema():
 def obter_status_servicos():
     """Retorna status dos serviços (NGINX, PostgreSQL, FastAPI, venv)"""
     try:
+        # Centralizar em services.system_monitor
         from services.system_monitor import get_services_status
-        
         status_dict = get_services_status()
         return ServicesStatusResponse(**status_dict)
     except Exception as e:
@@ -302,7 +306,7 @@ def verificar_e_iniciar_servicos():
                          text=True, 
                          timeout=30)
         
-        # Retornar status atualizado
+        # Retornar status atualizado centralizado
         from services.system_monitor import get_services_status
         status_dict = get_services_status()
         return ServicesStatusResponse(**status_dict)
@@ -311,18 +315,6 @@ def verificar_e_iniciar_servicos():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao verificar serviços: {str(e)}"
         )
-
-# --- Rotas de compatibilidade (aliases) ---
-# Algumas versões antigas do frontend chamavam /configuracoes/servicos (sem /sistema)
-# e /configuracoes/servicos/verificar. Mantemos aliases para evitar 404.
-
-@router.get("/servicos", response_model=ServicesStatusResponse)
-def obter_status_servicos_compat():
-    return obter_status_servicos()
-
-@router.post("/servicos/verificar", response_model=ServicesStatusResponse)
-def verificar_e_iniciar_servicos_compat():
-    return verificar_e_iniciar_servicos()
 
 @router.get("/postgres/info", response_model=PostgresInfoResponse)
 def obter_info_postgres():
