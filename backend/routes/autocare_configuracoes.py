@@ -3,9 +3,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
 from db import get_db
-from models.autocare_models import Configuracao, Produto, Usuario, BackupLog
+from models.autocare_models import Configuracao, Produto, Usuario
 import hashlib
 import os
 import sys
@@ -24,9 +23,8 @@ if services_dir_str not in sys.path:
 router = APIRouter(tags=["configuracoes"])
 security = HTTPBearer(auto_error=False)
 
-# =====================
-# Schemas Pydantic
-# =====================
+# Schema Pydantic
+from pydantic import BaseModel, Field, validator
 
 class ConfiguracaoBase(BaseModel):
     chave: str
@@ -42,6 +40,7 @@ class ConfiguracaoUpdate(BaseModel):
 
 class ConfiguracaoResponse(ConfiguracaoBase):
     id: int
+    
     class Config:
         from_attributes = True
 
@@ -92,7 +91,9 @@ class BackupResponse(BaseModel):
     mensagem: str
     erro: Optional[str] = None
 
+
 class BackupLogResponse(BaseModel):
+    """Resposta com informações de um log de backup"""
     id: int
     data_hora: Optional[str]
     tipo: Optional[str]
@@ -103,123 +104,28 @@ class BackupLogResponse(BaseModel):
     criado_por: Optional[str]
     observacoes: Optional[str]
     erro_detalhes: Optional[str]
+    
     class Config:
         from_attributes = True
 
+
 class RestaurarBackupRequest(BaseModel):
+    """Request para restaurar backup"""
     senha: str
     confirmar: bool = True
 
+
 class RestaurarBackupResponse(BaseModel):
+    """Resposta da operação de restauração"""
     sucesso: bool
     mensagem: str
     erro: Optional[str] = None
 
+
 class DeletarBackupResponse(BaseModel):
+    """Resposta da operação de exclusão"""
     sucesso: bool
     mensagem: str
-@router.post("/backups/sincronizar")
-def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
-    """
-    Sincroniza registros de backups com o sistema de arquivos:
-      - Adiciona no banco arquivos .sql existentes em diretórios conhecidos que ainda não tenham log.
-      - Marca como erro (arquivo ausente) os logs 'sucesso' cujo arquivo não exista mais.
-    Diretórios varridos: AUTOCARE_BACKUP_DIR, /var/backups/autocare, ~/autocare_backups, /tmp/autocare_backups
-    """
-    from models.autocare_models import BackupLog
-    from pathlib import Path
-    import os
-    import hashlib
-    import re
-    from datetime import datetime
-
-    # Diretórios candidatos
-    dirs = []
-    if os.getenv('AUTOCARE_BACKUP_DIR'):
-        dirs.append(Path(os.getenv('AUTOCARE_BACKUP_DIR')))
-    dirs.append(Path('/var/backups/autocare'))
-    try:
-        dirs.append(Path.home() / 'autocare_backups')
-    except Exception:
-        pass
-    dirs.append(Path('/tmp/autocare_backups'))
-
-    # Normalizar e filtrar existentes
-    scan_dirs = [p for p in dirs if isinstance(p, Path) and p.exists()]
-
-    # Mapear arquivos encontrados
-    found_files = {}
-    for d in scan_dirs:
-        try:
-            for arquivo in d.glob('*.sql'):
-                found_files[str(arquivo)] = arquivo
-        except Exception:
-            continue
-
-    # Conjunto de caminhos já registrados
-    registrados_rows = db.query(BackupLog.caminho_arquivo).filter(BackupLog.caminho_arquivo.isnot(None)).all()
-    caminhos_registrados = {r[0] for r in registrados_rows}
-
-    sincronizados = []
-    # Adicionar arquivos não registrados
-    for caminho, arquivo in found_files.items():
-        if caminho in caminhos_registrados:
-            continue
-        try:
-            tamanho_mb = arquivo.stat().st_size / (1024 * 1024)
-            sha256_hash = hashlib.sha256()
-            with open(arquivo, 'rb') as f:
-                for chunk in iter(lambda: f.read(4096), b''):
-                    sha256_hash.update(chunk)
-            hash_arquivo = sha256_hash.hexdigest()
-
-            # Extrair data/hora do nome (autocare_backup_YYYYMMDD_HHMMSS.sql) se possível
-            match = re.search(r'(\d{8})_(\d{6})', arquivo.name)
-            if match:
-                data_hora = datetime.strptime(match.group(1) + match.group(2), '%Y%m%d%H%M%S')
-            else:
-                data_hora = datetime.fromtimestamp(arquivo.stat().st_mtime)
-
-            novo = BackupLog(
-                data_hora=data_hora,
-                tipo='manual',
-                tamanho_mb=tamanho_mb,
-                status='sucesso',
-                hash_arquivo=hash_arquivo,
-                caminho_arquivo=caminho,
-                criado_por='sistema',
-                observacoes=f'Sincronizado automaticamente em {datetime.now().isoformat()}'
-            )
-            db.add(novo)
-            sincronizados.append(arquivo.name)
-        except Exception as e:
-            print(f"Erro ao sincronizar {arquivo}: {e}")
-
-    # Marcar logs sucesso com arquivo ausente
-    marcados_ausentes = []
-    logs_sucesso = db.query(BackupLog).filter(BackupLog.status == 'sucesso').all()
-    for log in logs_sucesso:
-        caminho = log.caminho_arquivo or ''
-        if not caminho:
-            continue
-        if not Path(caminho).exists():
-            log.status = 'erro'
-            detalhe = 'Arquivo de backup não encontrado no sistema de arquivos'
-            log.observacoes = f'{(log.observacoes + "; " ) if log.observacoes else ""}{detalhe}'
-            log.erro_detalhes = detalhe
-            marcados_ausentes.append(log.id)
-
-    if sincronizados or marcados_ausentes:
-        db.commit()
-
-    return {
-        'sucesso': True,
-        'mensagem': f"Sincronização concluída: {len(sincronizados)} adicionados, {len(marcados_ausentes)} marcados como ausentes",
-        'adicionados': sincronizados,
-        'marcados_como_ausentes': marcados_ausentes,
-        'diretorios_varridos': [str(p) for p in scan_dirs]
-    }
-    
 
 
 # Função auxiliar para hash de senha
@@ -319,7 +225,116 @@ def listar_backups(
     return result
 
 
- 
+@router.post("/backups/sincronizar")
+def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
+    """
+    Sincroniza backups órfãos - registra no BD arquivos de backup que existem no diretório
+    mas não possuem registro no banco de dados
+    """
+    from models.autocare_models import BackupLog
+    from pathlib import Path
+    import os
+    import hashlib
+    import re
+    from datetime import datetime
+    
+    # Determinar diretório de backups
+    backup_dir = os.getenv('AUTOCARE_BACKUP_DIR') or '/var/backups/autocare'
+    backup_path = Path(backup_dir)
+    
+    if not backup_path.exists():
+        return {
+            "sucesso": False,
+            "mensagem": f"Diretório de backups não encontrado: {backup_dir}",
+            "sincronizados": 0
+        }
+    
+    # Buscar todos os registros de backup
+    todos_backups = db.query(BackupLog).all()
+    # Conjunto de caminhos já registrados (apenas não nulos)
+    caminhos_registrados = {b.caminho_arquivo for b in todos_backups if b.caminho_arquivo}
+    
+    # Encontrar arquivos .sql no diretório
+    arquivos_sql = list(backup_path.glob('*.sql'))
+    sincronizados = []
+    removidos = []
+
+    # 1) Remover registros cujo arquivo não existe mais ou sem caminho definido
+    caminhos_existentes = {str(p) for p in arquivos_sql}
+    ids_para_remover = []
+    for b in todos_backups:
+        if not b.caminho_arquivo or b.caminho_arquivo not in caminhos_existentes:
+            ids_para_remover.append(b.id)
+    if ids_para_remover:
+        db.query(BackupLog).filter(BackupLog.id.in_(ids_para_remover)).delete(synchronize_session=False)
+        removidos = ids_para_remover[:]
+    
+    for arquivo in arquivos_sql:
+        caminho_completo = str(arquivo)
+        
+        # Pular se já está registrado
+        if caminho_completo in caminhos_registrados:
+            continue
+        
+        try:
+            # Calcular tamanho
+            tamanho_bytes = arquivo.stat().st_size
+            tamanho_mb = tamanho_bytes / (1024 * 1024)
+            
+            # Calcular hash SHA256
+            sha256_hash = hashlib.sha256()
+            with open(arquivo, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(byte_block)
+            hash_arquivo = sha256_hash.hexdigest()
+            
+            # Extrair data do nome do arquivo (formato: autocare_backup_YYYYMMDD_HHMMSS.sql)
+            match = re.search(r'(\d{8})_(\d{6})', arquivo.name)
+            if match:
+                data_str = match.group(1)
+                hora_str = match.group(2)
+                data_hora = datetime.strptime(f"{data_str}{hora_str}", "%Y%m%d%H%M%S")
+            else:
+                # Usar data de modificação do arquivo
+                data_hora = datetime.fromtimestamp(arquivo.stat().st_mtime)
+            
+            # Determinar tipo (órfão = manual por padrão)
+            tipo = 'manual'
+            if 'diario' in arquivo.name.lower():
+                tipo = 'diario'
+            elif 'mensal' in arquivo.name.lower():
+                tipo = 'mensal'
+            
+            # Criar registro no banco
+            novo_backup = BackupLog(
+                data_hora=data_hora,
+                tipo=tipo,
+                tamanho_mb=tamanho_mb,
+                status='sucesso',
+                hash_arquivo=hash_arquivo,
+                caminho_arquivo=caminho_completo,
+                criado_por='sistema',
+                observacoes=f'Sincronizado automaticamente - backup órfão encontrado em {datetime.now().isoformat()}'
+            )
+            db.add(novo_backup)
+            sincronizados.append(arquivo.name)
+            
+        except Exception as e:
+            print(f"Erro ao sincronizar {arquivo.name}: {str(e)}")
+            continue
+    
+    # Commit em lote para inclusões e remoções
+    if sincronizados or removidos:
+        db.commit()
+    
+    return {
+        "sucesso": True,
+        "mensagem": f"{len(sincronizados)} sincronizado(s), {len(removidos)} removido(s)",
+        "sincronizados": sincronizados,
+        "removidos": removidos,
+        "total_arquivos": len(arquivos_sql),
+        "total_registrados": len(caminhos_registrados) - len(removidos) + len(sincronizados)
+    }
 
 
 @router.post("/backups/{backup_id}/restaurar", response_model=RestaurarBackupResponse)
@@ -503,7 +518,65 @@ def restaurar_backup(
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
 
         if result.returncode == 0:
-            # Sucesso na restauração
+            # Sucesso na restauração: reconstruir tabela backup_logs para refletir arquivos reais
+            try:
+                from db import SessionLocal
+                from models.autocare_models import BackupLog as BL
+                import hashlib, re
+                from datetime import datetime as dt
+
+                sync_db = SessionLocal()
+                try:
+                    backup_dir = os.getenv('AUTOCARE_BACKUP_DIR') or '/var/backups/autocare'
+                    bp = Path(backup_dir)
+                    arquivos_sql = list(bp.glob('*.sql')) if bp.exists() else []
+                    caminhos_existentes = {str(p) for p in arquivos_sql}
+
+                    # Remover registros ausentes ou sem caminho
+                    todos = sync_db.query(BL).all()
+                    ids_remove = [b.id for b in todos if (not b.caminho_arquivo) or (b.caminho_arquivo not in caminhos_existentes)]
+                    if ids_remove:
+                        sync_db.query(BL).filter(BL.id.in_(ids_remove)).delete(synchronize_session=False)
+
+                    # Mapear já registrados
+                    registrados = {b.caminho_arquivo for b in todos if b.caminho_arquivo}
+                    for arq in arquivos_sql:
+                        caminho = str(arq)
+                        if caminho in registrados:
+                            continue
+                        # calcular metadados
+                        tamanho_mb = arq.stat().st_size / (1024*1024)
+                        sha256_hash = hashlib.sha256()
+                        with open(arq, 'rb') as f:
+                            for bb in iter(lambda: f.read(4096), b""):
+                                sha256_hash.update(bb)
+                        hash_arquivo = sha256_hash.hexdigest()
+                        m = re.search(r'(\d{8})_(\d{6})', arq.name)
+                        if m:
+                            dh = dt.strptime(m.group(1)+m.group(2), '%Y%m%d%H%M%S')
+                        else:
+                            dh = dt.fromtimestamp(arq.stat().st_mtime)
+                        novo = BL(
+                            data_hora=dh,
+                            tipo='manual',
+                            tamanho_mb=tamanho_mb,
+                            status='sucesso',
+                            hash_arquivo=hash_arquivo,
+                            caminho_arquivo=caminho,
+                            criado_por='sistema',
+                            observacoes=f'Sincronizado automaticamente após restauração em {dt.now().isoformat()}'
+                        )
+                        sync_db.add(novo)
+                    sync_db.commit()
+                finally:
+                    try:
+                        sync_db.close()
+                    except Exception:
+                        pass
+            except Exception:
+                # Não falhar a resposta por causa da sincronização; já restaurou com sucesso
+                pass
+
             return RestaurarBackupResponse(
                 sucesso=True,
                 mensagem=f"✅ Backup restaurado com sucesso! O banco de dados foi restaurado para o estado de {backup.data_hora.strftime('%d/%m/%Y às %H:%M:%S') if backup.data_hora else 'backup'}"

@@ -106,6 +106,10 @@ export default function Configuracoes() {
     ativo: true,
     ordem_exibicao: ''
   });
+  // Overlay para pós-restauração (exibir feedback e forçar reload)
+  const [overlayPosRestore, setOverlayPosRestore] = useState(false);
+  // Overlay de erro pós-restauração (exige confirmação)
+  const [overlayErroRestore, setOverlayErroRestore] = useState<string | null>(null);
 
   // Query: buscar configurações
   const { data: configuracoes, isLoading } = useQuery<Configuracao[]>({
@@ -399,9 +403,16 @@ export default function Configuracoes() {
         body: JSON.stringify({ senha, confirmar: true })
       });
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       if (data.sucesso) {
-        toast.success(data.mensagem, { duration: 5000 });
+        // Após restauração, sincronizar órfãos automaticamente para refletir os arquivos reais
+        try {
+          await apiFetch('/configuracoes/backups/sincronizar', { method: 'POST' });
+        } catch (_) {}
+        toast.success(data.mensagem, { duration: 4000 });
+        // Exigir confirmação do usuário para finalizar e recarregar a aplicação
+        setOverlayPosRestore(true);
+        try { localStorage.setItem('autocare_last_restore', String(Date.now())); } catch (_) {}
         setBackupParaRestaurar(null);
         setSenhaRestaurar('');
         refetchBackups();
@@ -409,12 +420,15 @@ export default function Configuracoes() {
         // Mostrar erro detalhado
         const errorMsg = data.erro ? `${data.mensagem}\n\nDetalhes: ${data.erro}` : data.mensagem;
         toast.error(errorMsg, { duration: 10000 });
+        setOverlayErroRestore(errorMsg);
         setBackupParaRestaurar(null);
         setSenhaRestaurar('');
       }
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Erro ao restaurar backup', { duration: 5000 });
+      const msg = error.message || 'Erro ao restaurar backup';
+      toast.error(msg, { duration: 5000 });
+      setOverlayErroRestore(msg);
       setBackupParaRestaurar(null);
       setSenhaRestaurar('');
     }
@@ -1706,6 +1720,52 @@ export default function Configuracoes() {
               <div className="w-full h-2 bg-orange-600 rounded-full animate-pulse"></div>
             </div>
             <p className="text-xs text-gray-500">Você será notificado automaticamente ao término com sucesso ou falha.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay pós-restauração para feedback e reload forçado */}
+      {overlayPosRestore && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-md p-6 mx-4 text-center bg-white rounded-lg shadow-2xl">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 bg-green-100 rounded-full">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-800">Restauração concluída</h3>
+            <p className="mb-2 text-sm text-gray-600">Atualizando a aplicação para refletir os novos dados...</p>
+            <div className="w-full h-2 mb-1 overflow-hidden bg-gray-200 rounded-full">
+              <div className="w-full h-2 bg-green-600 rounded-full animate-pulse"></div>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">Clique em OK para continuar.</p>
+            <div className="mt-4">
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay de erro pós-restauração (ack obrigatório) */}
+      {overlayErroRestore && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-md p-6 mx-4 text-center bg-white rounded-lg shadow-2xl">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 bg-red-100 rounded-full">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-800">Falha na restauração</h3>
+            <p className="mb-3 text-sm whitespace-pre-wrap text-red-700">{overlayErroRestore}</p>
+            <div className="mt-2">
+              <button
+                onClick={() => setOverlayErroRestore(null)}
+                className="px-4 py-2 text-white bg-red-600 rounded-md hover:bg-red-700"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}

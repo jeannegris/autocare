@@ -318,23 +318,6 @@ def create_database_backup(tipo='manual', criado_por='sistema', db_session=None)
 
         # Localizar binário pg_dump
         pg_dump_bin = shutil.which('pg_dump') or '/usr/bin/pg_dump'
-        # Validar existência do pg_dump antes de executar
-        if not Path(pg_dump_bin).exists():
-            backup_log.status = 'erro'
-            backup_log.erro_detalhes = (
-                f"pg_dump não encontrado em '{pg_dump_bin}'. Instale o pacote 'postgresql-client' (ex.: sudo apt-get install -y postgresql-client)"
-            )
-            db_session.commit()
-
-            if close_session:
-                db_session.close()
-
-            return {
-                'sucesso': False,
-                'erro': backup_log.erro_detalhes,
-                'backup_log_id': backup_log.id,
-                'mensagem': 'Ferramenta pg_dump ausente no servidor'
-            }
         # Comando pg_dump
         env = os.environ.copy()
         env['PGPASSWORD'] = password
