@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import sys
 import shutil
+import hashlib
 from urllib.parse import urlparse, unquote
 
 
@@ -216,14 +217,38 @@ def check_postgres_connection():
         }
 
 
-def create_database_backup():
+def create_database_backup(tipo='manual', criado_por='sistema', db_session=None):
     """Cria backup do banco de dados PostgreSQL.
     - Diretório de destino:
       1) AUTOCARE_BACKUP_DIR (se definido)
       2) /var/backups/autocare (se existir /var/backups ou se puder criar)
       3) Path.home()/autocare_backups (fallback)
-    Retorna dict com campos: sucesso, arquivo (path absoluto), tamanho_mb, mensagem, erro.
+    Retorna dict com campos: sucesso, arquivo (path absoluto), tamanho_mb, mensagem, erro, backup_log_id.
+    
+    Args:
+        tipo: 'manual', 'diario' ou 'mensal'
+        criado_por: username ou 'sistema'
+        db_session: sessão do BD para registro de log (se None, cria uma nova)
     """
+    from models.autocare_models import BackupLog
+    from db import SessionLocal
+    
+    # Criar sessão se não fornecida
+    close_session = False
+    if db_session is None:
+        db_session = SessionLocal()
+        close_session = True
+    
+    # Criar registro de log inicial
+    backup_log = BackupLog(
+        tipo=tipo,
+        status='em_progresso',
+        criado_por=criado_por
+    )
+    db_session.add(backup_log)
+    db_session.commit()
+    db_session.refresh(backup_log)
+    
     try:
         import sys
         import os
@@ -304,6 +329,8 @@ def create_database_backup():
             '-U', user,
             '-d', database,
             '-F', 'p',  # Plain text format
+            '--clean',  # Adiciona comandos DROP antes dos CREATE
+            '--if-exists',  # Usa DROP IF EXISTS (mais seguro)
             '-f', str(backup_file)
         ]
 
@@ -312,22 +339,67 @@ def create_database_backup():
         if result.returncode == 0:
             # Verificar tamanho do arquivo de backup
             file_size = backup_file.stat().st_size / (1024 * 1024)  # MB
+            
+            # Calcular hash SHA256
+            sha256_hash = hashlib.sha256()
+            with open(backup_file, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(byte_block)
+            file_hash = sha256_hash.hexdigest()
+            
+            # Atualizar registro de log com sucesso
+            backup_log.status = 'sucesso'
+            backup_log.tamanho_mb = round(file_size, 2)
+            backup_log.hash_arquivo = file_hash
+            backup_log.caminho_arquivo = str(backup_file)
+            db_session.commit()
+            
+            if close_session:
+                db_session.close()
+            
             return {
                 'sucesso': True,
                 'arquivo': str(backup_file),
                 'tamanho_mb': round(file_size, 2),
+                'hash': file_hash,
+                'backup_log_id': backup_log.id,
                 'mensagem': f'Backup criado com sucesso: {backup_file}'
             }
         else:
+            # Atualizar registro com erro
+            backup_log.status = 'erro'
+            backup_log.erro_detalhes = result.stderr
+            db_session.commit()
+            
+            if close_session:
+                db_session.close()
+            
             return {
                 'sucesso': False,
                 'erro': result.stderr,
+                'backup_log_id': backup_log.id,
                 'mensagem': f'Erro ao criar backup do banco de dados (pg_dump exit {result.returncode})'
             }
     except Exception as e:
+        # Atualizar registro com erro de exceção
+        try:
+            backup_log.status = 'erro'
+            backup_log.erro_detalhes = str(e)
+            db_session.commit()
+            backup_log_id = backup_log.id
+        except:
+            backup_log_id = None
+        
+        if close_session:
+            try:
+                db_session.close()
+            except:
+                pass
+        
         return {
             'sucesso': False,
             'erro': str(e),
+            'backup_log_id': backup_log_id,
             'mensagem': 'Erro ao criar backup do banco de dados'
         }
 

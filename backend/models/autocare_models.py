@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Numeric, Date
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Numeric, Date, Float
 from sqlalchemy.orm import relationship, foreign, synonym
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -416,5 +416,25 @@ class Usuario(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
+        
     # Relacionamentos
     perfil = relationship("Perfil", back_populates="usuarios")
+
+
+class BackupLog(Base):
+    """Registro de auditoria de backups do banco de dados"""
+    __tablename__ = "backup_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    data_hora = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    tipo = Column(String(20), nullable=False, index=True)  # 'manual', 'diario', 'mensal'
+    tamanho_mb = Column(Float, nullable=True)
+    status = Column(String(20), nullable=False, default='sucesso')  # 'sucesso', 'erro', 'em_progresso'
+    hash_arquivo = Column(String(64), nullable=True)  # SHA256
+    caminho_arquivo = Column(Text, nullable=True)
+    criado_por = Column(String(100), nullable=True)  # username ou 'sistema'
+    observacoes = Column(Text, nullable=True)
+    erro_detalhes = Column(Text, nullable=True)
+
+    def __repr__(self):
+        return f"<BackupLog(id={self.id}, tipo={self.tipo}, data_hora={self.data_hora}, status={self.status})>"

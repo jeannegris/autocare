@@ -64,6 +64,19 @@ interface AplicarMargemRequest {
   senha_supervisor: string;
 }
 
+interface BackupLog {
+  id: number;
+  data_hora: string;
+  tipo: string;
+  tamanho_mb: number | null;
+  status: string;
+  hash_arquivo: string | null;
+  caminho_arquivo: string | null;
+  criado_por: string | null;
+  observacoes: string | null;
+  erro_detalhes: string | null;
+}
+
 export default function Configuracoes() {
   const queryClient = useQueryClient();
   const [senhaAtual, setSenhaAtual] = useState('');
@@ -78,6 +91,11 @@ export default function Configuracoes() {
   const [sugestaoParaDeletar, setSugestaoParaDeletar] = useState<SugestaoManutencao | null>(null);
   const [senhaBackup, setSenhaBackup] = useState('');
   const [mostrarModalBackup, setMostrarModalBackup] = useState(false);
+  const [mostrarModalBackupsExistentes, setMostrarModalBackupsExistentes] = useState(false);
+  const [backupParaRestaurar, setBackupParaRestaurar] = useState<BackupLog | null>(null);
+  const [backupParaDeletar, setBackupParaDeletar] = useState<BackupLog | null>(null);
+  const [senhaRestaurar, setSenhaRestaurar] = useState('');
+  const [senhaDeletar, setSenhaDeletar] = useState('');
   const [formSugestao, setFormSugestao] = useState({
     nome_peca: '',
     km_media_troca: '',
@@ -354,12 +372,94 @@ export default function Configuracoes() {
         toast.success(`${data.mensagem}${caminho}`);
         setMostrarModalBackup(false);
         setSenhaBackup('');
+        queryClient.invalidateQueries({ queryKey: ['backups'] });
       } else {
         toast.error(data.mensagem || 'Erro ao criar backup');
       }
     },
     onError: (error: any) => {
       toast.error(error.message || 'Erro ao criar backup');
+    }
+  });
+
+  // Query: listar backups existentes
+  const { data: backups, refetch: refetchBackups } = useQuery<BackupLog[]>({
+    queryKey: ['backups'],
+    queryFn: async () => {
+      return await apiFetch('/configuracoes/backups');
+    },
+    enabled: false
+  });
+
+  // Mutation: restaurar backup
+  const mutationRestaurar = useMutation({
+    mutationFn: async ({ backupId, senha }: { backupId: number; senha: string }) => {
+      return await apiFetch(`/configuracoes/backups/${backupId}/restaurar`, {
+        method: 'POST',
+        body: JSON.stringify({ senha, confirmar: true })
+      });
+    },
+    onSuccess: (data: any) => {
+      if (data.sucesso) {
+        toast.success(data.mensagem, { duration: 5000 });
+        setBackupParaRestaurar(null);
+        setSenhaRestaurar('');
+        refetchBackups();
+      } else {
+        // Mostrar erro detalhado
+        const errorMsg = data.erro ? `${data.mensagem}\n\nDetalhes: ${data.erro}` : data.mensagem;
+        toast.error(errorMsg, { duration: 10000 });
+        setBackupParaRestaurar(null);
+        setSenhaRestaurar('');
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao restaurar backup', { duration: 5000 });
+      setBackupParaRestaurar(null);
+      setSenhaRestaurar('');
+    }
+  });
+
+  // Mutation: deletar backup
+  const mutationDeletarBackup = useMutation({
+    mutationFn: async ({ backupId, senha }: { backupId: number; senha: string }) => {
+      return await apiFetch(`/configuracoes/backups/${backupId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ senha })
+      });
+    },
+    onSuccess: (data: any) => {
+      if (data.sucesso) {
+        toast.success(data.mensagem);
+        setBackupParaDeletar(null);
+        setSenhaDeletar('');
+        refetchBackups();
+      } else {
+        toast.error(data.mensagem || 'Erro ao deletar backup');
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao deletar backup');
+    }
+  });
+
+  // Mutation: sincronizar backups órfãos
+  const mutationSincronizarBackups = useMutation({
+    mutationFn: async () => {
+      return await apiFetch('/configuracoes/backups/sincronizar', {
+        method: 'POST'
+      });
+    },
+    onSuccess: (data: any) => {
+      if (data.sucesso) {
+        toast.success(data.mensagem);
+        refetchBackups();
+      } else {
+        toast.error(data.mensagem || 'Erro ao sincronizar backups');
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao sincronizar backups');
     }
   });
 
@@ -496,14 +596,26 @@ export default function Configuracoes() {
                     <p className="mb-2 text-xs text-gray-500">
                       Backup será salvo em: <strong>/var/backups/autocare/</strong>
                     </p>
-                    <button
-                      onClick={() => setMostrarModalBackup(true)}
-                      disabled={mutationBackup.isPending}
-                      className="flex items-center justify-center w-full px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      {mutationBackup.isPending ? 'Criando...' : 'Criar Backup'}
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => setMostrarModalBackup(true)}
+                        disabled={mutationBackup.isPending}
+                        className="flex items-center justify-center w-full px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {mutationBackup.isPending ? 'Criando...' : 'Criar Backup'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMostrarModalBackupsExistentes(true);
+                          refetchBackups();
+                        }}
+                        className="flex items-center justify-center w-full px-4 py-2 text-sm text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50"
+                      >
+                        <Database className="w-4 h-4 mr-2" />
+                        Backups Existentes
+                      </button>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -1250,6 +1362,329 @@ export default function Configuracoes() {
                   <>
                     <Save className="w-4 h-4 mr-2" />
                     Criar Backup
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Backups Existentes */}
+      {mostrarModalBackupsExistentes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="relative w-full max-w-5xl p-6 mx-4 overflow-y-auto bg-white rounded-lg shadow-xl max-h-[90vh]">
+            <button
+              onClick={() => {
+                setMostrarModalBackupsExistentes(false);
+                setBackupParaRestaurar(null);
+                setBackupParaDeletar(null);
+              }}
+              className="absolute text-gray-500 top-4 right-4 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="flex items-center mb-6 text-2xl font-semibold text-blue-600">
+              <Database className="w-6 h-6 mr-2" />
+              Backups Existentes
+            </h2>
+
+            <div className="flex justify-between items-center mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+              <p className="text-sm text-gray-700">
+                {backups ? `${backups.length} backup(s) registrado(s)` : 'Carregando...'}
+              </p>
+              <button
+                onClick={() => mutationSincronizarBackups.mutate()}
+                disabled={mutationSincronizarBackups.isPending}
+                className="flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400"
+                title="Sincronizar backups órfãos (arquivos sem registro no BD)"
+              >
+                {mutationSincronizarBackups.isPending ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-b-2 border-white rounded-full animate-spin"></div>
+                    Sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Sincronizar Órfãos
+                  </>
+                )}
+              </button>
+            </div>
+
+            {backups && backups.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="p-3 text-left border">ID</th>
+                      <th className="p-3 text-left border">Data/Hora</th>
+                      <th className="p-3 text-left border">Tipo</th>
+                      <th className="p-3 text-left border">Tamanho</th>
+                      <th className="p-3 text-left border">Status</th>
+                      <th className="p-3 text-left border">Hash</th>
+                      <th className="p-3 text-left border">Criado Por</th>
+                      <th className="p-3 text-center border">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backups.map((backup) => (
+                      <tr key={backup.id} className="hover:bg-gray-50">
+                        <td className="p-3 border">{backup.id}</td>
+                        <td className="p-3 border">
+                          {new Date(backup.data_hora).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="p-3 border">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                            backup.tipo === 'manual' ? 'bg-blue-100 text-blue-800' :
+                            backup.tipo === 'diario' ? 'bg-green-100 text-green-800' :
+                            'bg-purple-100 text-purple-800'
+                          }`}>
+                            {backup.tipo}
+                          </span>
+                        </td>
+                        <td className="p-3 border">
+                          {backup.tamanho_mb ? `${backup.tamanho_mb.toFixed(2)} MB` : '-'}
+                        </td>
+                        <td className="p-3 border">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                            backup.status === 'sucesso' ? 'bg-green-100 text-green-800' :
+                            backup.status === 'erro' ? 'bg-red-100 text-red-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {backup.status}
+                          </span>
+                        </td>
+                        <td 
+                          className="p-3 font-mono text-xs border cursor-help" 
+                          title={backup.hash_arquivo || 'Sem hash'}
+                        >
+                          {backup.hash_arquivo ? backup.hash_arquivo.substring(0, 12) + '...' : '-'}
+                        </td>
+                        <td className="p-3 border">{backup.criado_por || '-'}</td>
+                        <td className="p-3 border">
+                          <div className="flex justify-center gap-2">
+                            {backup.status === 'sucesso' && (
+                              <button
+                                onClick={() => setBackupParaRestaurar(backup)}
+                                className="px-3 py-1 text-xs text-white bg-green-600 rounded hover:bg-green-700"
+                                title="Restaurar backup"
+                              >
+                                Restaurar
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setBackupParaDeletar(backup)}
+                              className="px-3 py-1 text-xs text-white bg-red-600 rounded hover:bg-red-700"
+                              title="Excluir backup"
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="py-8 text-center text-gray-500">
+                Nenhum backup encontrado.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmação de Restauração */}
+      {backupParaRestaurar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="relative w-full max-w-md p-6 mx-4 bg-white rounded-lg shadow-xl">
+            <button
+              onClick={() => {
+                setBackupParaRestaurar(null);
+                setSenhaRestaurar('');
+              }}
+              className="absolute text-gray-500 top-4 right-4 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="flex items-center mb-4 text-xl font-semibold text-orange-600">
+              <AlertTriangle className="w-5 h-5 mr-2" />
+              Confirmar Restauração
+            </h2>
+            <div className="mb-4 space-y-2">
+              <p className="text-gray-700">
+                <strong>⚠️ ATENÇÃO:</strong> Esta ação irá <strong className="text-red-600">substituir TODOS os dados</strong> atuais do banco de dados!
+              </p>
+              <div className="p-3 mb-2 text-sm bg-yellow-50 border border-yellow-200 rounded">
+                <p className="font-semibold text-yellow-800">🚨 Avisos Importantes:</p>
+                <ul className="mt-1 ml-4 text-xs text-yellow-700 list-disc">
+                  <li>Todas as conexões ativas serão encerradas</li>
+                  <li>Usuários conectados serão desconectados</li>
+                  <li>A operação pode levar alguns minutos</li>
+                  <li>Aguarde a conclusão sem fechar a janela</li>
+                </ul>
+              </div>
+              <div className="p-3 text-sm bg-gray-100 rounded">
+                <p><strong>Backup ID:</strong> {backupParaRestaurar.id}</p>
+                <p><strong>Data:</strong> {new Date(backupParaRestaurar.data_hora).toLocaleString('pt-BR')}</p>
+                <p><strong>Tipo:</strong> {backupParaRestaurar.tipo}</p>
+                <p><strong>Tamanho:</strong> {backupParaRestaurar.tamanho_mb?.toFixed(2)} MB</p>
+              </div>
+            </div>
+            
+            {/* Barra de progresso quando está restaurando */}
+            {mutationRestaurar.isPending && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-orange-600">Restaurando backup...</span>
+                  <span className="text-xs text-gray-500">Aguarde</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                  <div className="h-2.5 bg-orange-600 rounded-full animate-pulse" style={{width: '100%'}}></div>
+                </div>
+                <p className="mt-2 text-xs text-center text-gray-600">
+                  ⏳ Encerrando conexões e aplicando backup...
+                </p>
+              </div>
+            )}
+            
+            <p className="mb-4 text-sm text-gray-600">
+              Digite a senha do supervisor para confirmar:
+            </p>
+            <input
+              type="password"
+              value={senhaRestaurar}
+              onChange={(e) => setSenhaRestaurar(e.target.value)}
+              className="w-full px-3 py-2 mb-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+              placeholder="Senha do supervisor"
+              autoFocus
+              disabled={mutationRestaurar.isPending}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && senhaRestaurar && !mutationRestaurar.isPending) {
+                  mutationRestaurar.mutate({
+                    backupId: backupParaRestaurar.id,
+                    senha: senhaRestaurar
+                  });
+                }
+              }}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setBackupParaRestaurar(null);
+                  setSenhaRestaurar('');
+                }}
+                disabled={mutationRestaurar.isPending}
+                className="px-4 py-2 text-gray-700 bg-gray-300 rounded-md hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  mutationRestaurar.mutate({
+                    backupId: backupParaRestaurar.id,
+                    senha: senhaRestaurar
+                  });
+                }}
+                disabled={mutationRestaurar.isPending || !senhaRestaurar}
+                className="flex items-center px-4 py-2 text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {mutationRestaurar.isPending ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Restaurando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Confirmar Restauração
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmação de Exclusão */}
+      {backupParaDeletar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="relative w-full max-w-md p-6 mx-4 bg-white rounded-lg shadow-xl">
+            <button
+              onClick={() => {
+                setBackupParaDeletar(null);
+                setSenhaDeletar('');
+              }}
+              className="absolute text-gray-500 top-4 right-4 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="flex items-center mb-4 text-xl font-semibold text-red-600">
+              <Trash2 className="w-5 h-5 mr-2" />
+              Confirmar Exclusão
+            </h2>
+            <div className="mb-4 space-y-2">
+              <p className="text-gray-700">
+                Tem certeza que deseja excluir este backup?
+              </p>
+              <div className="p-3 text-sm bg-gray-100 rounded">
+                <p><strong>Backup ID:</strong> {backupParaDeletar.id}</p>
+                <p><strong>Data:</strong> {new Date(backupParaDeletar.data_hora).toLocaleString('pt-BR')}</p>
+                <p><strong>Tipo:</strong> {backupParaDeletar.tipo}</p>
+                <p><strong>Arquivo:</strong> <span className="text-xs break-all">{backupParaDeletar.caminho_arquivo}</span></p>
+              </div>
+            </div>
+            <p className="mb-4 text-sm text-gray-600">
+              Digite a senha do supervisor para confirmar:
+            </p>
+            <input
+              type="password"
+              value={senhaDeletar}
+              onChange={(e) => setSenhaDeletar(e.target.value)}
+              className="w-full px-3 py-2 mb-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+              placeholder="Senha do supervisor"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && senhaDeletar) {
+                  mutationDeletarBackup.mutate({
+                    backupId: backupParaDeletar.id,
+                    senha: senhaDeletar
+                  });
+                }
+              }}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setBackupParaDeletar(null);
+                  setSenhaDeletar('');
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-300 rounded-md hover:bg-gray-400"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  mutationDeletarBackup.mutate({
+                    backupId: backupParaDeletar.id,
+                    senha: senhaDeletar
+                  });
+                }}
+                disabled={mutationDeletarBackup.isPending || !senhaDeletar}
+                className="flex items-center px-4 py-2 text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {mutationDeletarBackup.isPending ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-b-2 border-white rounded-full animate-spin"></div>
+                    Excluindo...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Confirmar Exclusão
                   </>
                 )}
               </button>

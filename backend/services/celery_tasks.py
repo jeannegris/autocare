@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from datetime import datetime, timedelta
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
@@ -8,6 +9,8 @@ from db import SessionLocal
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from pathlib import Path
+import os
 
 # Configurar Celery
 celery_app = Celery(
@@ -36,6 +39,11 @@ celery_app.conf.update(
         'verificar-estoque-baixo': {
             'task': 'services.celery_tasks.verificar_estoque_baixo',
             'schedule': 21600.0,  # 6 horas
+        },
+        'backup-mensal': {
+            'task': 'services.celery_tasks.backup_mensal_task',
+            # Cron: dia 31 às 22:00 (ou último dia do mês se não houver dia 31)
+            'schedule': crontab(hour=22, minute=0, day_of_month='28-31'),
         },
     },
 )
@@ -190,9 +198,118 @@ def enviar_email_aniversario(cliente_id: int):
         db.close()
 
 @celery_app.task
+def backup_diario_task():
+    """
+    Backup diário do banco de dados.
+    Mantém apenas os últimos 7 backups diários.
+    """
+    from services.system_monitor import create_database_backup
+    from models.autocare_models import BackupLog
+    
+    db = SessionLocal()
+    try:
+        # Criar backup diário
+        print("🔄 Iniciando backup diário automático...")
+        resultado = create_database_backup(
+            tipo='diario',
+            criado_por='sistema',
+            db_session=db
+        )
+        
+        if resultado.get('sucesso'):
+            print(f"✅ Backup diário criado: {resultado.get('arquivo')}")
+            print(f"   Hash: {resultado.get('hash')}")
+            print(f"   Tamanho: {resultado.get('tamanho_mb')} MB")
+            
+            # Limpar backups antigos (manter apenas 7 dias)
+            data_limite = datetime.now() - timedelta(days=7)
+            backups_antigos = db.query(BackupLog).filter(
+                BackupLog.tipo == 'diario',
+                BackupLog.data_hora < data_limite,
+                BackupLog.status == 'sucesso'
+            ).all()
+            
+            removidos = 0
+            for backup in backups_antigos:
+                try:
+                    # Remover arquivo físico
+                    if backup.caminho_arquivo and Path(backup.caminho_arquivo).exists():
+                        Path(backup.caminho_arquivo).unlink()
+                        print(f"🗑️  Backup antigo removido: {backup.caminho_arquivo}")
+                    
+                    # Remover registro do banco
+                    db.delete(backup)
+                    removidos += 1
+                except Exception as e:
+                    print(f"⚠️  Erro ao remover backup {backup.id}: {str(e)}")
+            
+            if removidos > 0:
+                db.commit()
+                print(f"🧹 {removidos} backup(s) antigo(s) removido(s)")
+            
+            return f"Backup diário concluído. {removidos} backup(s) antigo(s) removido(s)."
+        else:
+            erro = resultado.get('erro', 'Erro desconhecido')
+            print(f"❌ Erro no backup diário: {erro}")
+            return f"Erro no backup diário: {erro}"
+    
+    except Exception as e:
+        print(f"❌ Erro crítico no backup diário: {str(e)}")
+        return f"Erro crítico: {str(e)}"
+    
+    finally:
+        db.close()
+
+
+@celery_app.task
+def backup_mensal_task():
+    """
+    Backup mensal do banco de dados.
+    Executado no dia 31 de cada mês às 22:00 (ou último dia do mês).
+    Backups mensais não são removidos automaticamente.
+    """
+    from services.system_monitor import create_database_backup
+    
+    db = SessionLocal()
+    try:
+        hoje = datetime.now()
+        
+        # Verificar se é o último dia do mês
+        # Se hoje é dia 28-30 e amanhã seria mês diferente, é o último dia
+        amanha = hoje + timedelta(days=1)
+        if amanha.month != hoje.month or hoje.day == 31:
+            print("🔄 Iniciando backup mensal automático...")
+            resultado = create_database_backup(
+                tipo='mensal',
+                criado_por='sistema',
+                db_session=db
+            )
+            
+            if resultado.get('sucesso'):
+                print(f"✅ Backup mensal criado: {resultado.get('arquivo')}")
+                print(f"   Hash: {resultado.get('hash')}")
+                print(f"   Tamanho: {resultado.get('tamanho_mb')} MB")
+                return f"Backup mensal concluído: {resultado.get('arquivo')}"
+            else:
+                erro = resultado.get('erro', 'Erro desconhecido')
+                print(f"❌ Erro no backup mensal: {erro}")
+                return f"Erro no backup mensal: {erro}"
+        else:
+            print("ℹ️  Não é o último dia do mês, backup mensal não executado.")
+            return "Não é o último dia do mês"
+    
+    except Exception as e:
+        print(f"❌ Erro crítico no backup mensal: {str(e)}")
+        return f"Erro crítico: {str(e)}"
+    
+    finally:
+        db.close()
+
+
+@celery_app.task
 def processar_backup_dados():
-    """Fazer backup dos dados importantes"""
-    # Implementar backup automático
+    """Fazer backup dos dados importantes - DESCONTINUADO, use backup_diario_task"""
+    print("⚠️  Esta tarefa foi substituída por backup_diario_task")
     pass
 
 @celery_app.task
