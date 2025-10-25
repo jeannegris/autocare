@@ -371,17 +371,20 @@ export default function Configuracoes() {
       });
     },
     onSuccess: (data: any) => {
+      console.log('Resposta criar backup:', data);
       if (data.sucesso) {
-        const caminho = data.arquivo ? ` (${data.arquivo})` : '';
-        toast.success(`${data.mensagem}${caminho}`);
+        const tamanho = data.tamanho_mb ? ` - ${data.tamanho_mb} MB` : '';
+        toast.success(`Backup criado com sucesso!${tamanho}`, { duration: 5000 });
         setMostrarModalBackup(false);
         setSenhaBackup('');
-        queryClient.invalidateQueries({ queryKey: ['backups'] });
+        // Recarregar lista de backups
+        refetchBackups();
       } else {
-        toast.error(data.mensagem || 'Erro ao criar backup');
+        toast.error(data.mensagem || data.erro || 'Erro ao criar backup');
       }
     },
     onError: (error: any) => {
+      console.error('Erro criar backup:', error);
       toast.error(error.message || 'Erro ao criar backup');
     }
   });

@@ -892,9 +892,15 @@ def criar_backup_postgres(dados: ValidarSenhaRequest, db: Session = Depends(get_
     try:
         from services.system_monitor import create_database_backup
         
+        print(f"[BACKUP] Iniciando criação de backup manual pelo supervisor")
         resultado = create_database_backup(tipo='manual', criado_por='supervisor', db_session=db)
+        print(f"[BACKUP] Resultado: {resultado}")
+        
         return BackupResponse(**resultado)
     except Exception as e:
+        print(f"[BACKUP] Erro na criação: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return BackupResponse(
             sucesso=False,
             mensagem="Erro ao criar backup",
