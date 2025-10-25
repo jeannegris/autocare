@@ -36,51 +36,48 @@ LOG_FILE="$BACKEND_LOG_DIR/backend.log"
 # Inicializar sistema de log
 init_logging() {
     # Criar diretório de logs se não existir
-    mkdir -p "$BACKEND_LOG_DIR" 2>/dev/null || true
+    if ! mkdir -p "$BACKEND_LOG_DIR" 2>/dev/null; then
+        # Tentar com sudo
+        if ! sudo -n mkdir -p "$BACKEND_LOG_DIR" 2>/dev/null; then
+            # Fallback para /tmp desde o início se não conseguir criar diretório
+            echo "[WARN] Não foi possível criar $BACKEND_LOG_DIR. Usando /tmp para logs."
+            BACKEND_LOG_DIR="/tmp"
+            LOG_FILE="/tmp/autocare_backend.log"
+        fi
+    fi
 
-    # Se backend.log já existir, tentar fazer backup (com fallback se sem permissão)
+    # Garantir que o diretório seja gravável por todos (se conseguimos criá-lo)
+    if [ -d "$BACKEND_LOG_DIR" ] && [ "$BACKEND_LOG_DIR" != "/tmp" ]; then
+        sudo -n chmod 777 "$BACKEND_LOG_DIR" 2>/dev/null || chmod 777 "$BACKEND_LOG_DIR" 2>/dev/null || true
+    fi
+
+    # Se backend.log já existir, tentar fazer backup
     if [ -f "$LOG_FILE" ]; then
-        if mv -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
-            :
-        else
-            # tentar com sudo
-            if sudo -n mv "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
-                :
-            else
-                log "WARN" "Não foi possível mover $LOG_FILE para backend_old.log (permissões). Usando log temporário em /tmp."
-                ALT_LOG_FILE="/tmp/autocare_start_services_$(date +%s).log"
-                LOG_FILE="$ALT_LOG_FILE"
-                touch "$LOG_FILE" 2>/dev/null || true
-                return 0
-            fi
-        fi
+        mv -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null || \
+        sudo -n mv -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null || \
+        rm -f "$LOG_FILE" 2>/dev/null || \
+        sudo -n rm -f "$LOG_FILE" 2>/dev/null || true
     fi
 
-    # Criar novo arquivo de log
+    # Criar novo arquivo de log com permissões amplas
     if touch "$LOG_FILE" 2>/dev/null; then
-        chmod 644 "$LOG_FILE" 2>/dev/null || true
+        chmod 666 "$LOG_FILE" 2>/dev/null || sudo -n chmod 666 "$LOG_FILE" 2>/dev/null || true
+    elif sudo -n touch "$LOG_FILE" 2>/dev/null; then
+        sudo -n chmod 666 "$LOG_FILE" 2>/dev/null || true
     else
-        # tentar com sudo
-        if sudo -n touch "$LOG_FILE" 2>/dev/null && sudo -n chmod 644 "$LOG_FILE" 2>/dev/null; then
-            :
-        else
-            # fallback para /tmp
-            log "WARN" "Não foi possível criar $LOG_FILE (permissões). Usando log temporário em /tmp."
-            ALT_LOG_FILE="/tmp/autocare_start_services_$(date +%s).log"
-            LOG_FILE="$ALT_LOG_FILE"
-            touch "$LOG_FILE" 2>/dev/null || true
-        fi
+        # Fallback final para /tmp
+        echo "[WARN] Não foi possível criar $LOG_FILE. Usando /tmp/autocare_backend.log"
+        LOG_FILE="/tmp/autocare_backend.log"
+        touch "$LOG_FILE" 2>/dev/null || true
+        chmod 666 "$LOG_FILE" 2>/dev/null || true
     fi
 
-    # Se o arquivo existir mas não for gravável, tentar ajustar permissões; senão usar fallback em /tmp
-    if [ -e "$LOG_FILE" ] && [ ! -w "$LOG_FILE" ]; then
-        if chmod 666 "$LOG_FILE" 2>/dev/null || sudo chmod 666 "$LOG_FILE" 2>/dev/null; then
-            :
-        else
-            log "WARN" "Não foi possível ajustar permissões de $LOG_FILE. Usando log temporário em /tmp."
-            LOG_FILE="/tmp/autocare_start_services_$(date +%s).log"
-            touch "$LOG_FILE" 2>/dev/null || true
-        fi
+    # Verificação final: se ainda não for gravável, usar /tmp
+    if [ ! -w "$LOG_FILE" ]; then
+        echo "[WARN] $LOG_FILE não é gravável. Usando /tmp/autocare_backend.log"
+        LOG_FILE="/tmp/autocare_backend.log"
+        touch "$LOG_FILE" 2>/dev/null || true
+        chmod 666 "$LOG_FILE" 2>/dev/null || true
     fi
 }
 
@@ -106,11 +103,13 @@ log() {
             ;;
     esac
     
-    # Tentar gravar no arquivo de log principal; se falhar, gravar em /tmp como fallback
-    if ! echo "[$timestamp] [$level] $message" >> "$LOG_FILE" 2>/dev/null; then
-        ALT_LOG_FILE="/tmp/autocare_start_services.log"
-        echo "[$timestamp] [$level] $message" >> "$ALT_LOG_FILE" 2>/dev/null || true
-    fi
+    # Tentar gravar no arquivo de log; se falhar, não travar a execução
+    {
+        echo "[$timestamp] [$level] $message" >> "$LOG_FILE" 2>/dev/null
+    } || {
+        # Fallback silencioso para /tmp se LOG_FILE principal falhar
+        echo "[$timestamp] [$level] $message" >> "/tmp/autocare_fallback.log" 2>/dev/null || true
+    }
 }
 
 # Detectar sistema de init (mesma lógica do first_install.sh)
@@ -361,12 +360,27 @@ ENVEOF
     fi
     
     # Iniciar backend manualmente
-    log "INFO" "Iniciando uvicorn manualmente (logs integrados em backend.log)..."
+    log "INFO" "Iniciando uvicorn manualmente..."
+    
+    # Garantir que o arquivo de log seja gravável antes de redirecionar uvicorn
+    if [ ! -w "$LOG_FILE" ]; then
+        log "WARN" "Log file não gravável, ajustando permissões..."
+        chmod 666 "$LOG_FILE" 2>/dev/null || sudo -n chmod 666 "$LOG_FILE" 2>/dev/null || {
+            log "WARN" "Não foi possível ajustar permissões, redirecionando para /tmp"
+            LOG_FILE="/tmp/autocare_backend.log"
+            touch "$LOG_FILE" && chmod 666 "$LOG_FILE" 2>/dev/null || true
+        }
+    fi
+    
+    # Iniciar uvicorn com redirecionamento robusto
     nohup uvicorn server:app --host 0.0.0.0 --port $BACKEND_PORT >> "$LOG_FILE" 2>&1 &
+    BACKEND_PID=$!
     
     # Salvar PID (com fallback em caso de falta de permissão)
-    if ! echo $! > "$BACKEND_PID_FILE" 2>/dev/null; then
-        log "WARN" "Não foi possível gravar PID em $BACKEND_PID_FILE (ignorando registro de PID)"
+    if echo "$BACKEND_PID" > "$BACKEND_PID_FILE" 2>/dev/null; then
+        log "INFO" "PID do backend salvo: $BACKEND_PID"
+    else
+        log "WARN" "Não foi possível gravar PID em $BACKEND_PID_FILE (continuando sem registro de PID)"
     fi
     
     deactivate
