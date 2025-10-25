@@ -288,29 +288,46 @@ def create_database_backup(tipo='manual', criado_por='sistema', db_session=None)
 
         # Resolver diretório de backup com estratégia de queda
         env_backup_dir = os.getenv('AUTOCARE_BACKUP_DIR')
-        if env_backup_dir:
-            backup_dir = Path(env_backup_dir)
-        else:
-            preferred = Path('/var/backups/autocare')
-            if preferred.parent.exists():
-                backup_dir = preferred
-            else:
-                backup_dir = Path.home() / 'autocare_backups'
-
-        # Criar diretório (com pais) se necessário
-        try:
-            backup_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            # Se falhar (permissão), tentar fallback no cwd/backups
-            fallback_dir = Path.cwd() / 'backups'
+        
+        def test_write_permission(dir_path):
+            """Testa se consegue escrever no diretório"""
             try:
-                fallback_dir.mkdir(parents=True, exist_ok=True)
-                backup_dir = fallback_dir
+                test_file = dir_path / '.test_write'
+                test_file.write_text('test')
+                test_file.unlink()
+                return True
             except Exception:
-                # Última tentativa: /tmp/autocare_backups
-                tmp_dir = Path('/tmp/autocare_backups')
-                tmp_dir.mkdir(parents=True, exist_ok=True)
-                backup_dir = tmp_dir
+                return False
+        
+        # Tentar diretórios em ordem de preferência
+        backup_dir = None
+        candidates = []
+        
+        if env_backup_dir:
+            candidates.append(Path(env_backup_dir))
+        else:
+            candidates.extend([
+                Path('/var/backups/autocare'),
+                Path.home() / 'autocare_backups',
+                Path.cwd() / 'backups',
+                Path('/tmp/autocare_backups')
+            ])
+        
+        for candidate in candidates:
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                if test_write_permission(candidate):
+                    backup_dir = candidate
+                    print(f"[BACKUP] Usando diretório: {backup_dir}")
+                    break
+                else:
+                    print(f"[BACKUP] Sem permissão de escrita: {candidate}")
+            except Exception as e:
+                print(f"[BACKUP] Não foi possível usar {candidate}: {e}")
+                continue
+        
+        if not backup_dir:
+            raise Exception("Nenhum diretório de backup com permissão de escrita disponível")
 
         # Nome do arquivo de backup com timestamp
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
