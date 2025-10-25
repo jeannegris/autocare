@@ -2,6 +2,29 @@
 
 set -e  # Para em caso de erro
 
+# Definir PATH completo para garantir acesso a comandos básicos
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Aliases para comandos com caminhos absolutos (fallback se PATH falhar)
+DATE_CMD="/usr/bin/date"
+GREP_CMD="/usr/bin/grep"
+TAIL_CMD="/usr/bin/tail"
+SLEEP_CMD="/usr/bin/sleep"
+MKDIR_CMD="/usr/bin/mkdir"
+CHMOD_CMD="/usr/bin/chmod"
+CHOWN_CMD="/usr/bin/chown"
+TOUCH_CMD="/usr/bin/touch"
+MV_CMD="/usr/bin/mv"
+RM_CMD="/usr/bin/rm"
+DIRNAME_CMD="/usr/bin/dirname"
+BASENAME_CMD="/usr/bin/basename"
+PS_CMD="/usr/bin/ps"
+PGREP_CMD="/usr/bin/pgrep"
+KILL_CMD="/usr/bin/kill"
+CURL_CMD="/usr/bin/curl"
+SS_CMD="/usr/bin/ss"
+NETSTAT_CMD="/usr/bin/netstat"
+
 # Cores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -24,7 +47,7 @@ BACKEND_STATUS="❌"
 NGINX_STATUS="❌"
 APP_STATUS="❌"
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$($DIRNAME_CMD "$0")" && pwd)"
 BACKEND_PID_FILE="/tmp/autocare_backend.pid"
 # OBS: PID é opcional. Quando iniciado manualmente, tentamos registrar em /tmp.
 # Quando iniciado via systemd, não forçamos gravação de PID para evitar travamentos.
@@ -36,9 +59,9 @@ LOG_FILE="$BACKEND_LOG_DIR/backend.log"
 # Inicializar sistema de log
 init_logging() {
     # Criar diretório de logs se não existir
-    if ! mkdir -p "$BACKEND_LOG_DIR" 2>/dev/null; then
+    if ! $MKDIR_CMD -p "$BACKEND_LOG_DIR" 2>/dev/null; then
         # Tentar com sudo
-        if ! sudo -n mkdir -p "$BACKEND_LOG_DIR" 2>/dev/null; then
+        if ! sudo -n $MKDIR_CMD -p "$BACKEND_LOG_DIR" 2>/dev/null; then
             # Fallback para /tmp desde o início se não conseguir criar diretório
             echo "[WARN] Não foi possível criar $BACKEND_LOG_DIR. Usando /tmp para logs."
             BACKEND_LOG_DIR="/tmp"
@@ -48,36 +71,36 @@ init_logging() {
 
     # Garantir que o diretório seja gravável por todos (se conseguimos criá-lo)
     if [ -d "$BACKEND_LOG_DIR" ] && [ "$BACKEND_LOG_DIR" != "/tmp" ]; then
-        sudo -n chmod 777 "$BACKEND_LOG_DIR" 2>/dev/null || chmod 777 "$BACKEND_LOG_DIR" 2>/dev/null || true
+        sudo -n $CHMOD_CMD 777 "$BACKEND_LOG_DIR" 2>/dev/null || $CHMOD_CMD 777 "$BACKEND_LOG_DIR" 2>/dev/null || true
     fi
 
     # Se backend.log já existir, tentar fazer backup
     if [ -f "$LOG_FILE" ]; then
-        mv -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null || \
-        sudo -n mv -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null || \
-        rm -f "$LOG_FILE" 2>/dev/null || \
-        sudo -n rm -f "$LOG_FILE" 2>/dev/null || true
+        $MV_CMD -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null || \
+        sudo -n $MV_CMD -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null || \
+        $RM_CMD -f "$LOG_FILE" 2>/dev/null || \
+        sudo -n $RM_CMD -f "$LOG_FILE" 2>/dev/null || true
     fi
 
     # Criar novo arquivo de log com permissões amplas
-    if touch "$LOG_FILE" 2>/dev/null; then
-        chmod 666 "$LOG_FILE" 2>/dev/null || sudo -n chmod 666 "$LOG_FILE" 2>/dev/null || true
-    elif sudo -n touch "$LOG_FILE" 2>/dev/null; then
-        sudo -n chmod 666 "$LOG_FILE" 2>/dev/null || true
+    if $TOUCH_CMD "$LOG_FILE" 2>/dev/null; then
+        $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || sudo -n $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || true
+    elif sudo -n $TOUCH_CMD "$LOG_FILE" 2>/dev/null; then
+        sudo -n $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || true
     else
         # Fallback final para /tmp
         echo "[WARN] Não foi possível criar $LOG_FILE. Usando /tmp/autocare_backend.log"
         LOG_FILE="/tmp/autocare_backend.log"
-        touch "$LOG_FILE" 2>/dev/null || true
-        chmod 666 "$LOG_FILE" 2>/dev/null || true
+        $TOUCH_CMD "$LOG_FILE" 2>/dev/null || true
+        $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || true
     fi
 
     # Verificação final: se ainda não for gravável, usar /tmp
     if [ ! -w "$LOG_FILE" ]; then
         echo "[WARN] $LOG_FILE não é gravável. Usando /tmp/autocare_backend.log"
         LOG_FILE="/tmp/autocare_backend.log"
-        touch "$LOG_FILE" 2>/dev/null || true
-        chmod 666 "$LOG_FILE" 2>/dev/null || true
+        $TOUCH_CMD "$LOG_FILE" 2>/dev/null || true
+        $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || true
     fi
 }
 
@@ -86,7 +109,7 @@ log() {
     local level=$1
     shift
     local message="$@"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp=$($DATE_CMD '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo 'N/A')")
     
     case $level in
         "INFO")
@@ -139,7 +162,7 @@ service_active() {
 
 function is_port_listening() {
     local port="$1"
-    ss -ltn 2>/dev/null | grep -q ":${port} \|:${port}$" || netstat -tuln 2>/dev/null | grep ":$port " >/dev/null 2>&1
+    $SS_CMD -ltn 2>/dev/null | $GREP_CMD -q ":${port} \|:${port}$" || $NETSTAT_CMD -tuln 2>/dev/null | $GREP_CMD ":$port " >/dev/null 2>&1
 }
 
 function wait_for_port() {
@@ -150,7 +173,7 @@ function wait_for_port() {
         if is_port_listening "$port"; then
             return 0
         fi
-        sleep 1
+        $SLEEP_CMD 1 2>/dev/null || sleep 1
         i=$((i+1))
     done
     return 1
@@ -164,7 +187,7 @@ function wait_for_port_down() {
         if ! is_port_listening "$port"; then
             return 0
         fi
-        sleep 1
+        $SLEEP_CMD 1 2>/dev/null || sleep 1
         i=$((i+1))
     done
     return 1
@@ -184,7 +207,7 @@ detect_init_system
 init_logging
 
 log "INFO" "=== AutoCare - Inicialização dos Serviços ===" 
-log "INFO" "Data/Hora: $(date '+%Y-%m-%d %H:%M:%S')"
+log "INFO" "Data/Hora: $($DATE_CMD '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo 'N/A')"
 log "INFO" "Sistema de init detectado: $INIT_SYSTEM"
 log "INFO" "Iniciando verificação e inicialização dos serviços AutoCare..."
 log "INFO" "Log será salvo em: $LOG_FILE"
@@ -284,18 +307,18 @@ if is_port_listening $BACKEND_PORT; then
     log "INFO" "Backend já está rodando na porta $BACKEND_PORT - reiniciando..."
     
     # Parar processos existentes
-    OLD_PIDS=$(pgrep -f 'uvicorn.*server:app' 2>/dev/null || true)
+    OLD_PIDS=$($PGREP_CMD -f 'uvicorn.*server:app' 2>/dev/null || pgrep -f 'uvicorn.*server:app' 2>/dev/null || true)
     if [ -n "$OLD_PIDS" ]; then
         log "INFO" "Parando processo(s) backend existente(s): $OLD_PIDS"
-        echo "$OLD_PIDS" | xargs -r kill 2>/dev/null || true
+        echo "$OLD_PIDS" | xargs -r $KILL_CMD 2>/dev/null || echo "$OLD_PIDS" | xargs -r kill 2>/dev/null || true
         
         # Aguardar porta ficar livre
         if wait_for_port_down $BACKEND_PORT 15; then
             log "INFO" "Processo backend finalizado"
         else
             log "WARN" "Forçando finalização do backend..."
-            echo "$OLD_PIDS" | xargs -r kill -9 2>/dev/null || true
-            sleep 2
+            echo "$OLD_PIDS" | xargs -r $KILL_CMD -9 2>/dev/null || echo "$OLD_PIDS" | xargs -r kill -9 2>/dev/null || true
+            $SLEEP_CMD 2 2>/dev/null || sleep 2
         fi
     fi
 fi
@@ -365,10 +388,10 @@ ENVEOF
     # Garantir que o arquivo de log seja gravável antes de redirecionar uvicorn
     if [ ! -w "$LOG_FILE" ]; then
         log "WARN" "Log file não gravável, ajustando permissões..."
-        chmod 666 "$LOG_FILE" 2>/dev/null || sudo -n chmod 666 "$LOG_FILE" 2>/dev/null || {
+        $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || sudo -n $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || {
             log "WARN" "Não foi possível ajustar permissões, redirecionando para /tmp"
             LOG_FILE="/tmp/autocare_backend.log"
-            touch "$LOG_FILE" && chmod 666 "$LOG_FILE" 2>/dev/null || true
+            $TOUCH_CMD "$LOG_FILE" && $CHMOD_CMD 666 "$LOG_FILE" 2>/dev/null || true
         }
     fi
     
@@ -398,7 +421,7 @@ ENVEOF
         log "ERROR" "Backend falhou ao iniciar - verifique $LOG_FILE"
         if [ -f "$LOG_FILE" ]; then
             log "ERROR" "Últimas linhas do log:"
-            tail -10 "$LOG_FILE" | grep -v "\[INFO\]\|\[SUCCESS\]\|\[WARN\]\|\[ERROR\]" | tail -5 | while read line; do
+            ($TAIL_CMD -10 "$LOG_FILE" 2>/dev/null || tail -10 "$LOG_FILE" 2>/dev/null || cat "$LOG_FILE" 2>/dev/null) | ($GREP_CMD -v "\[INFO\]\|\[SUCCESS\]\|\[WARN\]\|\[ERROR\]" 2>/dev/null || grep -v "\[INFO\]\|\[SUCCESS\]\|\[WARN\]\|\[ERROR\]" 2>/dev/null || cat) | ($TAIL_CMD -5 2>/dev/null || tail -5 2>/dev/null || cat) | while read line; do
                 log "ERROR" "  $line"
             done
         fi
@@ -422,10 +445,10 @@ if [ "$BACKEND_STATUS" = "✅" ]; then
     log "INFO" "Testando endpoints do backend..."
     
     # Aguardar backend estar realmente pronto
-    sleep 5
+    $SLEEP_CMD 5 2>/dev/null || sleep 5
     
     # Testar health check
-    if curl -s --max-time 10 "http://localhost:$BACKEND_PORT/health" >/dev/null 2>&1; then
+    if $CURL_CMD -s --max-time 10 "http://localhost:$BACKEND_PORT/health" >/dev/null 2>&1 || curl -s --max-time 10 "http://localhost:$BACKEND_PORT/health" >/dev/null 2>&1; then
         log "SUCCESS" "Health check: OK"
         APP_STATUS="✅"
     else
@@ -434,7 +457,7 @@ if [ "$BACKEND_STATUS" = "✅" ]; then
     fi
     
     # Testar endpoint raiz
-    if curl -s --max-time 10 "http://localhost:$BACKEND_PORT/" >/dev/null 2>&1; then
+    if $CURL_CMD -s --max-time 10 "http://localhost:$BACKEND_PORT/" >/dev/null 2>&1 || curl -s --max-time 10 "http://localhost:$BACKEND_PORT/" >/dev/null 2>&1; then
         log "SUCCESS" "Endpoint raiz: OK"
     else
         log "WARN" "Endpoint raiz: não respondeu"
@@ -443,13 +466,13 @@ if [ "$BACKEND_STATUS" = "✅" ]; then
     # Testar via Nginx se estiver rodando
     if [ "$NGINX_STATUS" = "✅" ]; then
         log "INFO" "Testando acesso via Nginx..."
-        if curl -s --max-time 10 "http://localhost/autocare/" >/dev/null 2>&1; then
+        if $CURL_CMD -s --max-time 10 "http://localhost/autocare/" >/dev/null 2>&1 || curl -s --max-time 10 "http://localhost/autocare/" >/dev/null 2>&1; then
             log "SUCCESS" "Frontend via Nginx: OK"
         else
             log "WARN" "Frontend via Nginx: não acessível"
         fi
         
-        if curl -s --max-time 10 "http://localhost/autocare-api/" >/dev/null 2>&1; then
+        if $CURL_CMD -s --max-time 10 "http://localhost/autocare-api/" >/dev/null 2>&1 || curl -s --max-time 10 "http://localhost/autocare-api/" >/dev/null 2>&1; then
             log "SUCCESS" "API via Nginx: OK"
         else
             log "WARN" "API via Nginx: não acessível"
