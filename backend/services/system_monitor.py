@@ -315,7 +315,23 @@ def create_database_backup(tipo='manual', criado_por='sistema', db_session=None)
         
         for candidate in candidates:
             try:
+                # Criar diretório se não existir
                 candidate.mkdir(parents=True, exist_ok=True)
+                
+                # Para /var/backups/autocare, garantir permissões 777
+                if str(candidate) == '/var/backups/autocare':
+                    try:
+                        import stat
+                        # Definir permissões 777 (rwxrwxrwx)
+                        candidate.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+                    except Exception as e:
+                        # Se falhar ao definir permissões, tentar com sudo
+                        try:
+                            subprocess.run(['sudo', 'chmod', '777', str(candidate)], 
+                                         check=True, capture_output=True)
+                        except Exception:
+                            pass  # Continuar mesmo se falhar
+                
                 if test_write_permission(candidate):
                     backup_dir = candidate
                     break

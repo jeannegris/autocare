@@ -142,7 +142,7 @@ export default function Configuracoes() {
   }
 
   // Query: buscar informações do sistema
-  const { data: systemInfo, isLoading: isLoadingSystem } = useQuery<SystemInfo>({
+  const { data: systemInfo, isLoading: isLoadingSystem, refetch: refetchSystemInfo, isFetching: isFetchingSystemInfo } = useQuery<SystemInfo>({
     queryKey: ['system-info'],
     queryFn: async () => {
       try {
@@ -646,10 +646,20 @@ export default function Configuracoes() {
 
         {/* Card 2: Informações do Servidor */}
         <div className="p-6 bg-white rounded-lg shadow-md">
-          <h2 className="flex items-center mb-4 text-xl font-semibold text-gray-800">
-            <Server className="w-5 h-5 mr-2 text-green-600" />
-            Servidor
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="flex items-center text-xl font-semibold text-gray-800">
+              <Server className="w-5 h-5 mr-2 text-green-600" />
+              Servidor
+            </h2>
+            <button
+              onClick={() => refetchSystemInfo()}
+              disabled={isFetchingSystemInfo}
+              className="p-1 text-gray-400 transition-colors rounded hover:text-green-600 hover:bg-green-50 disabled:cursor-not-allowed"
+              title="Atualizar informações do servidor"
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetchingSystemInfo ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
           
           {isLoadingSystem ? (
             <div className="py-8 text-center">
@@ -1337,7 +1347,7 @@ export default function Configuracoes() {
             </h2>
             <p className="mb-4 text-gray-700">
               Esta ação irá criar um backup completo do banco de dados PostgreSQL.
-              O arquivo será salvo em: <strong>~/autocare_backups/</strong>
+              O arquivo será salvo em: <strong>/var/backups/autocare/</strong>
             </p>
             <p className="mb-4 text-sm text-gray-600">
               Digite a senha do supervisor para confirmar:
