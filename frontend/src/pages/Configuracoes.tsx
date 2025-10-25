@@ -96,6 +96,8 @@ export default function Configuracoes() {
   const [backupParaDeletar, setBackupParaDeletar] = useState<BackupLog | null>(null);
   const [senhaRestaurar, setSenhaRestaurar] = useState('');
   const [senhaDeletar, setSenhaDeletar] = useState('');
+  const [mostrarModalLogsServicos, setMostrarModalLogsServicos] = useState(false);
+  const [logsServicos, setLogsServicos] = useState('');
   const [formSugestao, setFormSugestao] = useState({
     nome_peca: '',
     km_media_troca: '',
@@ -481,16 +483,26 @@ export default function Configuracoes() {
   // Mutation: verificar e iniciar serviços
   const mutationVerificarServicos = useMutation({
     mutationFn: async () => {
-      return await apiFetch('/configuracoes/sistema/verificar-servicos', {
+      return await apiFetch('/configuracoes/sistema/verificar-servicos-logs', {
         method: 'POST'
       });
     },
-    onSuccess: () => {
-      toast.success('Serviços verificados com sucesso!');
+    onSuccess: (data: any) => {
+      setLogsServicos(data.logs || 'Nenhum log disponível');
+      setMostrarModalLogsServicos(true);
+      
+      if (data.sucesso) {
+        toast.success(data.mensagem || 'Serviços verificados com sucesso!');
+      } else {
+        toast.error(data.mensagem || 'Verificação concluída com avisos');
+      }
+      
       refetchServices();
     },
     onError: (error: any) => {
       toast.error(error.message || 'Erro ao verificar serviços');
+      setLogsServicos('Erro ao executar verificação: ' + (error.message || 'Erro desconhecido'));
+      setMostrarModalLogsServicos(true);
     }
   });
 
@@ -1775,6 +1787,33 @@ export default function Configuracoes() {
                 className="px-4 py-2 text-white bg-red-600 rounded-md hover:bg-red-700"
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Logs da Verificação de Serviços */}
+      {mostrarModalLogsServicos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="relative w-full max-w-4xl p-6 mx-4 bg-white rounded-lg shadow-xl max-h-[85vh] flex flex-col">
+            <h2 className="flex items-center mb-4 text-2xl font-semibold text-purple-600">
+              <Activity className="w-6 h-6 mr-2" />
+              Logs da Verificação de Serviços
+            </h2>
+            
+            <div className="mb-6 overflow-x-auto flex-1">
+              <pre className="p-4 text-xs text-gray-800 bg-gray-100 border border-gray-300 rounded-lg whitespace-pre-wrap font-mono h-full overflow-y-auto">
+{logsServicos}
+              </pre>
+            </div>
+            
+            <div className="flex justify-center">
+              <button
+                onClick={() => setMostrarModalLogsServicos(false)}
+                className="px-6 py-2 text-white bg-purple-600 rounded-md hover:bg-purple-700"
+              >
+                Fechar
               </button>
             </div>
           </div>

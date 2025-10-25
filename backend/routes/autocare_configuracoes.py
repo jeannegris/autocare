@@ -128,6 +128,13 @@ class DeletarBackupResponse(BaseModel):
     mensagem: str
 
 
+class VerificarServicosLogsResponse(BaseModel):
+    """Resposta com logs da execução do script de verificação"""
+    sucesso: bool
+    logs: str
+    mensagem: str
+
+
 # Função auxiliar para hash de senha
 def hash_senha(senha: str) -> str:
     """Hash SHA256 da senha"""
@@ -835,6 +842,64 @@ def verificar_e_iniciar_servicos():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao verificar serviços: {str(e)}"
         )
+
+
+@router.post("/sistema/verificar-servicos-logs", response_model=VerificarServicosLogsResponse)
+def verificar_servicos_com_logs():
+    """Executa o script start_services.sh e retorna os logs da execução"""
+    try:
+        # Executar script de inicialização
+        script_path = Path(__file__).parent.parent.parent / 'start_services.sh'
+        if not script_path.exists():
+            return VerificarServicosLogsResponse(
+                sucesso=False,
+                logs="",
+                mensagem=f"Script não encontrado: {script_path}"
+            )
+        
+        # Executar script e capturar saída
+        result = subprocess.run(
+            ['bash', str(script_path)], 
+            capture_output=True, 
+            text=True, 
+            timeout=60
+        )
+        
+        # Combinar stdout e stderr
+        logs_output = result.stdout
+        if result.stderr:
+            logs_output += "\n\n=== STDERR ===\n" + result.stderr
+        
+        # Ler também o arquivo de log se existir
+        log_file = Path(__file__).parent.parent / 'logs' / 'backend.log'
+        if log_file.exists():
+            try:
+                with open(log_file, 'r') as f:
+                    # Pegar últimas 100 linhas do log
+                    lines = f.readlines()
+                    recent_logs = ''.join(lines[-100:])
+                    logs_output += "\n\n=== LOG FILE (últimas 100 linhas) ===\n" + recent_logs
+            except Exception:
+                pass
+        
+        return VerificarServicosLogsResponse(
+            sucesso=result.returncode == 0,
+            logs=logs_output,
+            mensagem="Script executado com sucesso" if result.returncode == 0 else "Script executado com erros"
+        )
+    except subprocess.TimeoutExpired:
+        return VerificarServicosLogsResponse(
+            sucesso=False,
+            logs="",
+            mensagem="Timeout: script demorou mais de 60 segundos"
+        )
+    except Exception as e:
+        return VerificarServicosLogsResponse(
+            sucesso=False,
+            logs="",
+            mensagem=f"Erro ao executar script: {str(e)}"
+        )
+
 
 # Aliases legados para compatibilidade
 @router.get("/servicos", response_model=ServicesStatusResponse)

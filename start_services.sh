@@ -34,16 +34,52 @@ LOG_FILE="$BACKEND_LOG_DIR/backend.log"
 # Inicializar sistema de log
 init_logging() {
     # Criar diretório de logs se não existir
-    mkdir -p "$BACKEND_LOG_DIR"
-    
-    # Se backend.log já existir, fazer backup
+    mkdir -p "$BACKEND_LOG_DIR" 2>/dev/null || true
+
+    # Se backend.log já existir, tentar fazer backup (com fallback se sem permissão)
     if [ -f "$LOG_FILE" ]; then
-        mv "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log"
+        if mv "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
+            :
+        else
+            # tentar com sudo
+            if sudo mv "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
+                :
+            else
+                log "WARN" "Não foi possível mover $LOG_FILE para backend_old.log (permissões). Usando log temporário em /tmp."
+                ALT_LOG_FILE="/tmp/autocare_start_services_$(date +%s).log"
+                LOG_FILE="$ALT_LOG_FILE"
+                touch "$LOG_FILE" 2>/dev/null || true
+                return 0
+            fi
+        fi
     fi
-    
+
     # Criar novo arquivo de log
-    touch "$LOG_FILE"
-    chmod 644 "$LOG_FILE"
+    if touch "$LOG_FILE" 2>/dev/null; then
+        chmod 644 "$LOG_FILE" 2>/dev/null || true
+    else
+        # tentar com sudo
+        if sudo touch "$LOG_FILE" 2>/dev/null && sudo chmod 644 "$LOG_FILE" 2>/dev/null; then
+            :
+        else
+            # fallback para /tmp
+            log "WARN" "Não foi possível criar $LOG_FILE (permissões). Usando log temporário em /tmp."
+            ALT_LOG_FILE="/tmp/autocare_start_services_$(date +%s).log"
+            LOG_FILE="$ALT_LOG_FILE"
+            touch "$LOG_FILE" 2>/dev/null || true
+        fi
+    fi
+
+    # Se o arquivo existir mas não for gravável, tentar ajustar permissões; senão usar fallback em /tmp
+    if [ -e "$LOG_FILE" ] && [ ! -w "$LOG_FILE" ]; then
+        if chmod 666 "$LOG_FILE" 2>/dev/null || sudo chmod 666 "$LOG_FILE" 2>/dev/null; then
+            :
+        else
+            log "WARN" "Não foi possível ajustar permissões de $LOG_FILE. Usando log temporário em /tmp."
+            LOG_FILE="/tmp/autocare_start_services_$(date +%s).log"
+            touch "$LOG_FILE" 2>/dev/null || true
+        fi
+    fi
 }
 
 # Função para logging (compatível com first_install.sh)
@@ -68,7 +104,11 @@ log() {
             ;;
     esac
     
-    echo "[$timestamp] [$level] $message" >> "$LOG_FILE" 2>/dev/null || true
+    # Tentar gravar no arquivo de log principal; se falhar, gravar em /tmp como fallback
+    if ! echo "[$timestamp] [$level] $message" >> "$LOG_FILE" 2>/dev/null; then
+        ALT_LOG_FILE="/tmp/autocare_start_services.log"
+        echo "[$timestamp] [$level] $message" >> "$ALT_LOG_FILE" 2>/dev/null || true
+    fi
 }
 
 # Detectar sistema de init (mesma lógica do first_install.sh)
@@ -321,8 +361,24 @@ ENVEOF
     log "INFO" "Iniciando uvicorn manualmente (logs integrados em backend.log)..."
     nohup uvicorn server:app --host 0.0.0.0 --port $BACKEND_PORT >> "$LOG_FILE" 2>&1 &
     
-    # Salvar PID
-    echo $! > "$BACKEND_PID_FILE"
+    # Salvar PID (com fallback em caso de falta de permissão)
+    if ! echo $! > "$BACKEND_PID_FILE" 2>/dev/null; then
+        log "WARN" "Não foi possível escrever em $BACKEND_PID_FILE (permissões). Tentando alternativa..."
+        # tentar com sudo
+        if sudo sh -c "echo $! > '$BACKEND_PID_FILE'" 2>/dev/null; then
+            log "INFO" "PID gravado em $BACKEND_PID_FILE via sudo"
+        else
+            # fallback para diretório do projeto
+            ALT_PID_FILE="$PROJECT_DIR/backend/autocare_backend.pid"
+            mkdir -p "$(dirname \"$ALT_PID_FILE\")" 2>/dev/null || true
+            if echo $! > "$ALT_PID_FILE" 2>/dev/null; then
+                log "INFO" "PID gravado em arquivo alternativo: $ALT_PID_FILE"
+                BACKEND_PID_FILE="$ALT_PID_FILE"
+            else
+                log "ERROR" "Falha ao gravar PID em qualquer local (tentado $BACKEND_PID_FILE e $ALT_PID_FILE)"
+            fi
+        fi
+    fi
     
     deactivate
     cd "$ROOT_DIR"
