@@ -881,17 +881,41 @@ def verificar_servicos_com_logs():
         if result.stderr:
             logs_output += "\n\n=== STDERR ===\n" + result.stderr
         
-        # Ler também o arquivo de log se existir
-        log_file = Path(__file__).parent.parent / 'logs' / 'backend.log'
-        if log_file.exists():
+        # Ler arquivo(s) de log se existir(em)
+        logs_dir = Path(__file__).parent.parent / 'logs'
+        log_file = logs_dir / 'backend.log'
+        
+        # Tentar ler backend.log primeiro
+        log_content_found = False
+        if log_file.exists() and log_file.stat().st_size > 0:
             try:
-                with open(log_file, 'r') as f:
-                    # Pegar últimas 100 linhas do log
+                with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
                     lines = f.readlines()
                     recent_logs = ''.join(lines[-100:])
-                    logs_output += "\n\n=== LOG FILE (últimas 100 linhas) ===\n" + recent_logs
-            except Exception:
-                pass
+                    logs_output += f"\n\n=== LOG FILE: {log_file.name} (últimas 100 linhas) ===\n" + recent_logs
+                    log_content_found = True
+            except Exception as e:
+                logs_output += f"\n\n=== Erro ao ler {log_file.name}: {str(e)} ===\n"
+        
+        # Se backend.log não existir ou estiver vazio, buscar outros arquivos .log
+        if not log_content_found and logs_dir.exists():
+            try:
+                log_files = sorted(logs_dir.glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
+                for lf in log_files[:3]:  # Pegar até 3 arquivos mais recentes
+                    if lf.stat().st_size > 0:
+                        try:
+                            with open(lf, 'r', encoding='utf-8', errors='ignore') as f:
+                                lines = f.readlines()
+                                recent_logs = ''.join(lines[-50:])  # 50 linhas para não sobrecarregar
+                                logs_output += f"\n\n=== LOG FILE: {lf.name} (últimas 50 linhas) ===\n" + recent_logs
+                                log_content_found = True
+                        except Exception as e:
+                            logs_output += f"\n\n=== Erro ao ler {lf.name}: {str(e)} ===\n"
+            except Exception as e:
+                logs_output += f"\n\n=== Erro ao buscar arquivos de log: {str(e)} ===\n"
+        
+        if not log_content_found:
+            logs_output += f"\n\n=== Nenhum arquivo de log encontrado ou todos vazios em {logs_dir} ===\n"
         
         return VerificarServicosLogsResponse(
             sucesso=result.returncode == 0,
