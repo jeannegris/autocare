@@ -26,6 +26,8 @@ APP_STATUS="❌"
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_PID_FILE="/tmp/autocare_backend.pid"
+# OBS: PID é opcional. Quando iniciado manualmente, tentamos registrar em /tmp.
+# Quando iniciado via systemd, não forçamos gravação de PID para evitar travamentos.
 
 # Configuração do sistema de log
 BACKEND_LOG_DIR="$PROJECT_DIR/backend/logs"
@@ -38,11 +40,11 @@ init_logging() {
 
     # Se backend.log já existir, tentar fazer backup (com fallback se sem permissão)
     if [ -f "$LOG_FILE" ]; then
-        if mv "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
+        if mv -f "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
             :
         else
             # tentar com sudo
-            if sudo mv "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
+            if sudo -n mv "$LOG_FILE" "$BACKEND_LOG_DIR/backend_old.log" 2>/dev/null; then
                 :
             else
                 log "WARN" "Não foi possível mover $LOG_FILE para backend_old.log (permissões). Usando log temporário em /tmp."
@@ -59,7 +61,7 @@ init_logging() {
         chmod 644 "$LOG_FILE" 2>/dev/null || true
     else
         # tentar com sudo
-        if sudo touch "$LOG_FILE" 2>/dev/null && sudo chmod 644 "$LOG_FILE" 2>/dev/null; then
+        if sudo -n touch "$LOG_FILE" 2>/dev/null && sudo -n chmod 644 "$LOG_FILE" 2>/dev/null; then
             :
         else
             # fallback para /tmp
@@ -199,7 +201,7 @@ else
     log "INFO" "PostgreSQL não está rodando. Tentando iniciar..."
     
     if [ "$INIT_SYSTEM" = "systemd" ]; then
-        if sudo systemctl start postgresql 2>/dev/null; then
+    if sudo -n systemctl start postgresql 2>/dev/null; then
             if wait_for_port 5432; then
                 log "SUCCESS" "PostgreSQL iniciado via systemd"
                 POSTGRES_STATUS="✅"
@@ -247,7 +249,7 @@ else
     log "INFO" "Nginx não está rodando. Tentando iniciar..."
     
     if [ "$INIT_SYSTEM" = "systemd" ]; then
-        if sudo systemctl start nginx 2>/dev/null; then
+    if sudo -n systemctl start nginx 2>/dev/null; then
             if wait_for_port 80; then
                 log "SUCCESS" "Nginx iniciado via systemd"
                 NGINX_STATUS="✅"
@@ -306,13 +308,14 @@ backend_started_systemd=false
 if [ "$INIT_SYSTEM" = "systemd" ]; then
     if systemctl list-unit-files 2>/dev/null | grep -q "autocare-backend.service"; then
         log "INFO" "Tentando iniciar via systemd..."
-        if sudo systemctl start autocare-backend 2>/dev/null; then
+        if sudo -n systemctl start autocare-backend 2>/dev/null; then
             sleep 3
-            if sudo systemctl is-active --quiet autocare-backend; then
+            if sudo -n systemctl is-active --quiet autocare-backend; then
                 if wait_for_port $BACKEND_PORT 15; then
                     log "SUCCESS" "Backend iniciado via systemd"
                     BACKEND_STATUS="✅"
                     backend_started_systemd=true
+                    # Não registrar PID quando iniciado via systemd (systemd gerencia o processo)
                 else
                     log "WARN" "Systemd ativo mas porta não respondeu"
                 fi
@@ -363,21 +366,7 @@ ENVEOF
     
     # Salvar PID (com fallback em caso de falta de permissão)
     if ! echo $! > "$BACKEND_PID_FILE" 2>/dev/null; then
-        log "WARN" "Não foi possível escrever em $BACKEND_PID_FILE (permissões). Tentando alternativa..."
-        # tentar com sudo
-        if sudo sh -c "echo $! > '$BACKEND_PID_FILE'" 2>/dev/null; then
-            log "INFO" "PID gravado em $BACKEND_PID_FILE via sudo"
-        else
-            # fallback para diretório do projeto
-            ALT_PID_FILE="$PROJECT_DIR/backend/autocare_backend.pid"
-            mkdir -p "$(dirname \"$ALT_PID_FILE\")" 2>/dev/null || true
-            if echo $! > "$ALT_PID_FILE" 2>/dev/null; then
-                log "INFO" "PID gravado em arquivo alternativo: $ALT_PID_FILE"
-                BACKEND_PID_FILE="$ALT_PID_FILE"
-            else
-                log "ERROR" "Falha ao gravar PID em qualquer local (tentado $BACKEND_PID_FILE e $ALT_PID_FILE)"
-            fi
-        fi
+        log "WARN" "Não foi possível gravar PID em $BACKEND_PID_FILE (ignorando registro de PID)"
     fi
     
     deactivate
@@ -385,7 +374,11 @@ ENVEOF
     
     # Aguardar inicialização
     if wait_for_port $BACKEND_PORT 20; then
-        log "SUCCESS" "Backend iniciado manualmente (PID: $(cat $BACKEND_PID_FILE))"
+        if [ -f "$BACKEND_PID_FILE" ]; then
+            log "SUCCESS" "Backend iniciado manualmente (PID: $(cat $BACKEND_PID_FILE))"
+        else
+            log "SUCCESS" "Backend iniciado manualmente"
+        fi
         BACKEND_STATUS="✅"
     else
         log "ERROR" "Backend falhou ao iniciar - verifique $LOG_FILE"
@@ -401,9 +394,9 @@ fi
 # 4. Testes da aplicação
 echo -e "\n🔍 ${BLUE}Testando aplicação AutoCare...${NC}"
 
-# Testar PostgreSQL com banco autocare
+# Testar PostgreSQL com banco autocare (sem sudo, não-interativo)
 log "INFO" "Testando conexão com banco de dados..."
-if sudo -u postgres psql -d "$DB_NAME" -c "SELECT 1;" >/dev/null 2>&1; then
+if PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" >/dev/null 2>&1; then
     log "SUCCESS" "Conexão com banco autocare: OK"
 else
     log "ERROR" "Falha na conexão com banco autocare"

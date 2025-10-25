@@ -828,11 +828,20 @@ def verificar_e_iniciar_servicos():
         # Executar script de inicialização
         script_path = Path(__file__).parent.parent.parent / 'start_services.sh'
         if script_path.exists():
-            subprocess.run(['bash', str(script_path)], 
-                         capture_output=True, 
-                         text=True, 
-                         timeout=30)
-        
+            # Use absolute path to bash to avoid PATH issues when running under restricted users
+            bash_bin = '/bin/bash'
+            try:
+                subprocess.run([bash_bin, str(script_path)],
+                               capture_output=True,
+                               text=True,
+                               timeout=30)
+            except FileNotFoundError:
+                # Fallback: tentar usar 'bash' disponível no PATH
+                subprocess.run(['bash', str(script_path)],
+                               capture_output=True,
+                               text=True,
+                               timeout=30)
+
         # Retornar status atualizado centralizado
         from services.system_monitor import get_services_status
         status_dict = get_services_status()
@@ -858,10 +867,12 @@ def verificar_servicos_com_logs():
             )
         
         # Executar script e capturar saída
+        # Use absolute path to bash to avoid PATH issues when running under restricted users
+        bash_bin = '/bin/bash'
         result = subprocess.run(
-            ['bash', str(script_path)], 
-            capture_output=True, 
-            text=True, 
+            [bash_bin, str(script_path)],
+            capture_output=True,
+            text=True,
             timeout=60
         )
         
