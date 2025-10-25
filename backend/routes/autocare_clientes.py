@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -16,6 +16,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[ClienteList])
 def listar_clientes(
+    response: Response,
     skip: int = 0,
     limit: int = 100,
     search: Optional[str] = None,
@@ -48,6 +49,15 @@ def listar_clientes(
     clientes = query.offset(skip).limit(limit).all()
     
     # Calcular estatísticas para cada cliente
+    # Evitar qualquer cache intermediário (CDN/Nginx/navegador)
+    try:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["X-Stats-Calc"] = "v2"
+    except Exception:
+        pass
+
     clientes_com_stats = []
     for cliente in clientes:
         # Calcular total gasto baseado no período
@@ -69,15 +79,47 @@ def listar_clientes(
             ordens_query = ordens_query.filter(OrdemServico.data_conclusao >= data_inicio)
         
         ordens = ordens_query.all()
-        
-        # Calcular total gasto
-        total_gasto = sum(ordem.valor_total or 0 for ordem in ordens)
-        
-        # Calcular total de serviços (todas as ordens concluídas, não só do período)
-        total_servicos = db.query(OrdemServico).filter(
-            OrdemServico.cliente_id == cliente.id,
-            OrdemServico.status == 'CONCLUIDA'
-        ).count()
+
+        # Regras de negócio:
+        # - Serviços: considerar apenas ordens dos tipos 'SERVICO' e 'VENDA_SERVICO'.
+        # - Total Gasto exibido nos clientes: somar SOMENTE o valor do serviço
+        #   (ex.: em 'VENDA_SERVICO' desconsiderar o valor de produtos/peças).
+        #   Para robustez, usamos na ordem: valor_servico > valor_mao_obra >
+        #   (valor_total - valor_pecas) > soma dos itens de tipo 'SERVICO'.
+        def valor_servico_da_os(os: OrdemServico) -> float:
+            try:
+                if os.tipo_ordem not in ('SERVICO', 'VENDA_SERVICO'):
+                    return 0.0
+                # valor_servico explícito
+                if os.valor_servico is not None and float(os.valor_servico) > 0:
+                    return float(os.valor_servico)
+                # valor_mao_obra legado
+                if os.valor_mao_obra is not None and float(os.valor_mao_obra) > 0:
+                    return float(os.valor_mao_obra)
+                # tentar derivar: total - pecas
+                if os.valor_total is not None and os.valor_pecas is not None:
+                    vt = float(os.valor_total or 0)
+                    vp = float(os.valor_pecas or 0)
+                    if vt - vp > 0:
+                        return vt - vp
+                # fallback: somar itens de serviço
+                if hasattr(os, 'itens') and os.itens:
+                    soma = 0.0
+                    for it in os.itens:
+                        try:
+                            if getattr(it, 'tipo', None) == 'SERVICO':
+                                soma += float(it.valor_total or 0)
+                        except Exception:
+                            continue
+                    return soma
+            except Exception:
+                pass
+            return 0.0
+
+        total_gasto = sum(valor_servico_da_os(os) for os in ordens)
+
+        # Calcular total de serviços no período (apenas OS com serviço)
+        total_servicos = sum(1 for os in ordens if os.tipo_ordem in ('SERVICO', 'VENDA_SERVICO'))
         
         # Calcular quantidade de veículos
         veiculos_count = db.query(Veiculo).filter(
@@ -278,13 +320,23 @@ def reativar_cliente(cliente_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{cliente_id}/estatisticas")
 def obter_estatisticas_cliente(
-    cliente_id: int, 
+    cliente_id: int,
+    response: Response,
     periodo: str = "T",  # T=Total, A=Anual, M=Mensal
     db: Session = Depends(get_db)
 ):
     """Obter estatísticas detalhadas de um cliente por período"""
     from datetime import datetime
     
+    # Evitar cache
+    try:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["X-Stats-Calc"] = "v2"
+    except Exception:
+        pass
+
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(
@@ -313,12 +365,38 @@ def obter_estatisticas_cliente(
         ordens_query = ordens_query.filter(OrdemServico.data_conclusao >= data_inicio)
     
     ordens = ordens_query.all()
+
+    # Mesmas regras de negócio da listagem de clientes
+    def valor_servico_da_os(os: OrdemServico) -> float:
+        try:
+            if os.tipo_ordem not in ('SERVICO', 'VENDA_SERVICO'):
+                return 0.0
+            if os.valor_servico is not None and float(os.valor_servico) > 0:
+                return float(os.valor_servico)
+            if os.valor_mao_obra is not None and float(os.valor_mao_obra) > 0:
+                return float(os.valor_mao_obra)
+            if os.valor_total is not None and os.valor_pecas is not None:
+                vt = float(os.valor_total or 0)
+                vp = float(os.valor_pecas or 0)
+                if vt - vp > 0:
+                    return vt - vp
+            if hasattr(os, 'itens') and os.itens:
+                soma = 0.0
+                for it in os.itens:
+                    try:
+                        if getattr(it, 'tipo', None) == 'SERVICO':
+                            soma += float(it.valor_total or 0)
+                    except Exception:
+                        continue
+                return soma
+        except Exception:
+            pass
+        return 0.0
+
+    total_gasto = sum(valor_servico_da_os(os) for os in ordens)
     
-    # Calcular total gasto no período
-    total_gasto = sum(ordem.valor_total or 0 for ordem in ordens)
-    
-    # Calcular total de serviços no período (usa o mesmo filtro de `ordens_query`)
-    total_servicos = ordens_query.count()
+    # Total de serviços no período: apenas OS com serviço
+    total_servicos = sum(1 for os in ordens if os.tipo_ordem in ('SERVICO', 'VENDA_SERVICO'))
     
     # Calcular quantidade de veículos ativos
     veiculos_count = db.query(Veiculo).filter(

@@ -5,12 +5,15 @@ export function apiPath(path: string) {
 }
 
 export async function apiFetch(path: string, init?: RequestInit) {
-  const url = apiPath(path)
+  // Evitar cache agressivo do navegador/proxy: para GET, acrescentar um cache-buster
+  let url = apiPath(path)
   // Garantir headers padrão quando um body JSON é enviado e o Content-Type não foi especificado
   const initCopy: RequestInit = init ? { ...init } : {}
   try {
     // Normalizar headers para um objeto Headers para facilitar verificações
     const headers = new Headers(initCopy.headers as HeadersInit || {})
+    // Sinalizar ao navegador que não deve usar cache do fetch
+    headers.set('Cache-Control', 'no-store')
     // Se existir body e não for FormData, definir Content-Type quando não fornecido
     if (initCopy.body && !(initCopy.body instanceof FormData) && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json')
@@ -19,6 +22,18 @@ export async function apiFetch(path: string, init?: RequestInit) {
   } catch (e) {
     // Fallback silencioso: se algo der errado, apenas use o init original
     initCopy.headers = initCopy.headers || {}
+  }
+
+  // Forçar o modo de fetch sem cache quando possível
+  if (!('cache' in (initCopy as any))) {
+    ;(initCopy as any).cache = 'no-store'
+  }
+
+  // Acrescentar parâmetro _ts para GET e HEAD (evita caches intermediários)
+  const method = (initCopy.method || 'GET').toUpperCase()
+  if (method === 'GET' || method === 'HEAD') {
+    const sep = url.includes('?') ? '&' : '?'
+    url = `${url}${sep}_ts=${Date.now()}`
   }
 
   const res = await fetch(url, initCopy)

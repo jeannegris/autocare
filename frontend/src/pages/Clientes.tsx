@@ -92,72 +92,17 @@ function useClientes(periodo: string = 'T') {
     queryKey: ['clientes', periodo],
     queryFn: async (): Promise<Cliente[]> => {
       const res = await apiFetch(`/clientes?periodo=${periodo}`)
-      // defensive: garantir que o backend retornou um array; se não, logar e retornar lista vazia
       if (!Array.isArray(res)) {
-        // Pode acontecer quando o proxy/server devolve uma página HTML ou um objeto de erro
-        // Evita que o componente lance ao chamar .filter em algo que não é array
-        // e facilita debugging
         // eslint-disable-next-line no-console
         console.error('useClientes: esperado array de clientes, recebeu:', res)
         return [] as Cliente[]
       }
       return res as Cliente[]
     },
-    // Dados mockados para desenvolvimento
-    placeholderData: [
-      {
-        id: 1,
-        nome: 'João Silva',
-        email: 'joao@email.com',
-        telefone: '(11) 99999-9999',
-        telefone2: '(11) 3333-4444',
-        whatsapp: '(11) 99999-9999',
-        endereco: 'Rua das Flores',
-        numero: '123',
-        complemento: 'Apto 45',
-        bairro: 'Jardim das Rosas',
-        cidade: 'São Paulo',
-        estado: 'SP',
-        cep: '01234-567',
-        cpf_cnpj: '123.456.789-00',
-        rg_ie: '12.345.678-9',
-        tipo: 'PF' as const,
-        data_nascimento: '1985-03-15',
-        observacoes: 'Cliente preferencial, sempre paga à vista',
-        created_at: '2024-01-15T10:00:00Z',
-        updated_at: '2024-01-15T10:00:00Z',
-        total_gasto: 15420.50,
-        total_servicos: 12,
-        ultima_visita: '2024-09-10',
-        veiculos_count: 2
-      },
-      {
-        id: 2,
-        nome: 'Auto Peças XYZ Ltda',
-        nome_fantasia: 'Auto Peças XYZ',
-        razao_social: 'Auto Peças XYZ Comércio Ltda',
-        email: 'contato@autopecasxyz.com',
-        telefone: '(11) 88888-8888',
-        whatsapp: '(11) 98765-4321',
-        contato_responsavel: 'Maria Santos',
-        endereco: 'Av. Paulista',
-        numero: '1000',
-        bairro: 'Bela Vista',
-        cidade: 'São Paulo',
-        estado: 'SP',
-        cep: '01310-100',
-        cpf_cnpj: '12.345.678/0001-90',
-        rg_ie: '123.456.789.123',
-        tipo: 'PJ' as const,
-        observacoes: 'Empresa parceira, desconto especial',
-        created_at: '2024-01-16T14:30:00Z',
-        updated_at: '2024-01-16T14:30:00Z',
-        total_gasto: 8950.00,
-        total_servicos: 6,
-        ultima_visita: '2024-09-12',
-        veiculos_count: 3
-      }
-    ]
+    // Sempre buscar dados frescos ao montar/trocar período
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+    staleTime: 0
   })
 }
 
@@ -1033,8 +978,8 @@ export default function Clientes() {
 
   const safeClientes = Array.isArray(clientes) ? clientes : []
 
-  // Inicializa o cache de estatísticas com o valor "Total" retornado pela lista
-  // para cada cliente que ainda não possui cache T.
+  // Sincroniza o cache de estatísticas (slot T) com os valores retornados na lista
+  // para garantir que o período "Total" do card sempre reflita a API atual.
   useEffect(() => {
     if (!safeClientes || safeClientes.length === 0) return
     setStatsPorCliente((prev) => {
@@ -1042,12 +987,10 @@ export default function Clientes() {
       for (const c of safeClientes as any[]) {
         const id = (c as any).id as number
         if (!next[id]) next[id] = {}
-        if (next[id].T === undefined) {
-          next[id].T = {
-            total_gasto: (c as any).total_gasto != null ? (c as any).total_gasto : 0,
-            total_servicos: (c as any).total_servicos != null ? (c as any).total_servicos : 0,
-            veiculos_count: (c as any).veiculos_count
-          }
+        next[id].T = {
+          total_gasto: (c as any).total_gasto != null ? (c as any).total_gasto : 0,
+          total_servicos: (c as any).total_servicos != null ? (c as any).total_servicos : 0,
+          veiculos_count: (c as any).veiculos_count
         }
       }
       return next
