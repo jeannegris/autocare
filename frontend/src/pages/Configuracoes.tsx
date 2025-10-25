@@ -371,20 +371,17 @@ export default function Configuracoes() {
       });
     },
     onSuccess: (data: any) => {
-      console.log('Resposta criar backup:', data);
       if (data.sucesso) {
         const tamanho = data.tamanho_mb ? ` - ${data.tamanho_mb} MB` : '';
         toast.success(`Backup criado com sucesso!${tamanho}`, { duration: 5000 });
         setMostrarModalBackup(false);
         setSenhaBackup('');
-        // Recarregar lista de backups
         refetchBackups();
       } else {
         toast.error(data.mensagem || data.erro || 'Erro ao criar backup');
       }
     },
     onError: (error: any) => {
-      console.error('Erro criar backup:', error);
       toast.error(error.message || 'Erro ao criar backup');
     }
   });
@@ -468,7 +465,6 @@ export default function Configuracoes() {
       });
     },
     onSuccess: (data: any) => {
-      console.log('Resposta sincronização:', data);
       if (data.sucesso !== false) {
         const msg = data.mensagem || `${data.sincronizados?.length || 0} arquivo(s) sincronizado(s), ${data.removidos?.length || 0} registro(s) órfão(s) removido(s)`;
         toast.success(msg);
@@ -478,7 +474,6 @@ export default function Configuracoes() {
       }
     },
     onError: (error: any) => {
-      console.error('Erro sincronização:', error);
       toast.error(error.message || 'Erro ao sincronizar backups');
     }
   });

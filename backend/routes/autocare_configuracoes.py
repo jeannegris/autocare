@@ -262,18 +262,12 @@ def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
     # 1) Remover registros cujo arquivo não existe mais ou sem caminho definido
     caminhos_existentes = {str(p) for p in arquivos_sql}
     ids_para_remover = []
-    print(f"[SYNC] Total de backups no BD: {len(todos_backups)}")
-    print(f"[SYNC] Total de arquivos .sql no diretório: {len(arquivos_sql)}")
-    print(f"[SYNC] Caminhos existentes: {caminhos_existentes}")
     
     for b in todos_backups:
-        print(f"[SYNC] Verificando backup ID {b.id}: caminho={b.caminho_arquivo}")
         if not b.caminho_arquivo or b.caminho_arquivo not in caminhos_existentes:
-            print(f"[SYNC] -> Marcado para remoção (arquivo não existe)")
             ids_para_remover.append(b.id)
     
     if ids_para_remover:
-        print(f"[SYNC] Removendo {len(ids_para_remover)} registro(s) órfão(s): {ids_para_remover}")
         db.query(BackupLog).filter(BackupLog.id.in_(ids_para_remover)).delete(synchronize_session=False)
         removidos = ids_para_remover[:]
     
@@ -892,15 +886,9 @@ def criar_backup_postgres(dados: ValidarSenhaRequest, db: Session = Depends(get_
     try:
         from services.system_monitor import create_database_backup
         
-        print(f"[BACKUP] Iniciando criação de backup manual pelo supervisor")
         resultado = create_database_backup(tipo='manual', criado_por='supervisor', db_session=db)
-        print(f"[BACKUP] Resultado: {resultado}")
-        
         return BackupResponse(**resultado)
     except Exception as e:
-        print(f"[BACKUP] Erro na criação: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return BackupResponse(
             sucesso=False,
             mensagem="Erro ao criar backup",

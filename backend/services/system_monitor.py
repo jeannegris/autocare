@@ -318,12 +318,8 @@ def create_database_backup(tipo='manual', criado_por='sistema', db_session=None)
                 candidate.mkdir(parents=True, exist_ok=True)
                 if test_write_permission(candidate):
                     backup_dir = candidate
-                    print(f"[BACKUP] Usando diretório: {backup_dir}")
                     break
-                else:
-                    print(f"[BACKUP] Sem permissão de escrita: {candidate}")
-            except Exception as e:
-                print(f"[BACKUP] Não foi possível usar {candidate}: {e}")
+            except Exception:
                 continue
         
         if not backup_dir:
