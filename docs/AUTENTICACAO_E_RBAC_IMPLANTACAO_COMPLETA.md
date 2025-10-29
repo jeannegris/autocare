@@ -1,132 +1,214 @@
-# 🔐 Guia Completo de Autenticação, 2FA e RBAC (Perfis e Permissões)
+# 🔐 Guia Completo de Autenticação, 2FA e RBAC - Implementação Detalhada
 
-Este documento consolida, em um único lugar, toda a codificação e configuração do sistema de autenticação de usuários (com 2FA), gestão de usuários, perfis e permissionamento por menus do AutoCare — cobrindo Backend, Frontend e Banco de Dados — para que você replique o mesmo esquema em outro ambiente.
+Este documento consolida **TODA a codificação e configuração** do sistema de autenticação de usuários (com 2FA), gestão de usuários, perfis e permissionamento por menus do AutoCare — cobrindo **Backend, Frontend e Banco de Dados** — para que você replique o mesmo esquema em outro ambiente com código completo e funcional.
 
+---
 
-## Visão geral
+## 📋 Índice
 
-- Autenticação com JWT e senhas com hash bcrypt
-- 2FA opcional por usuário via TOTP (Microsoft Authenticator)
-- Gestão de usuários: criar, editar (inclui troca de senha), ativar/desativar, excluir, habilitar/desabilitar 2FA
-- RBAC por Perfil, com permissões mapeadas 1:1 aos itens de menu do frontend
-- Seeds automáticos de Perfis padrão no startup do backend
-- Filtragem de menu no frontend conforme permissões do perfil do usuário logado
+1. [Visão Geral do Sistema](#visão-geral-do-sistema)
+2. [Banco de Dados - Estrutura Completa](#banco-de-dados---estrutura-completa)
+3. [Backend - Implementação Completa](#backend---implementação-completa)
+4. [Frontend - Implementação Completa](#frontend---implementação-completa)
+5. [Fluxos de Autenticação](#fluxos-de-autenticação)
+6. [Gestão de Usuários](#gestão-de-usuários)
+7. [Gestão de Perfis e Permissões](#gestão-de-perfis-e-permissões)
+8. [Guia de Implantação](#guia-de-implantação)
+9. [Troubleshooting](#troubleshooting)
 
+---
 
-## Arquitetura e componentes
+## Visão Geral do Sistema
 
-Backend (FastAPI + SQLAlchemy):
-- Modelos: `Usuario`, `Perfil` em `backend/models/autocare_models.py`
-- Rotas:
-  - Autenticação: `backend/routes/autocare_auth.py`
-  - Usuários (CRUD + status + 2FA): `backend/routes/autocare_usuarios.py`
-  - Perfis (CRUD + validações): `backend/routes/autocare_perfis.py`
-- Config: JWT e CORS em `backend/config.py`
-- App/Bootstrap: registro de rotas, CORS, seed de perfis em `backend/server.py`
-- DB/ORM: `backend/db.py` (PostgreSQL) — `create_tables()` cria as tabelas a partir dos modelos
+### Funcionalidades Implementadas
 
-Frontend (React + Vite + Tailwind):
-- Contexto de Autenticação: `frontend/src/contexts/AuthContext.tsx`
-- Proteção de rotas: `frontend/src/components/ProtectedRoute.tsx`
-- Layout e Menu com filtro por permissão: `frontend/src/components/Layout.tsx`
-- Páginas:
-  - Login: `frontend/src/pages/Login.tsx`
-  - 2FA: `frontend/src/pages/TwoFactorAuth.tsx`
-  - Gerenciar Usuários: `frontend/src/pages/GerenciarUsuarios.tsx`
-  - Gerenciar Perfis: `frontend/src/pages/GerenciarPerfis.tsx`
-- Roteamento: `frontend/src/App.tsx` (basename "/autocare")
-- Config de API (auto-resolve /api x /autocare-api): `frontend/src/lib/config.ts`
+✅ **Autenticação JWT**: Tokens seguros com hash bcrypt para senhas  
+✅ **2FA (TOTP)**: Autenticação de dois fatores opcional via Microsoft Authenticator  
+✅ **Gestão Completa de Usuários**: Criar, editar, excluir, ativar/desativar, trocar senha  
+✅ **RBAC (Role-Based Access Control)**: Perfis com permissões granulares  
+✅ **Filtro de Menu Dinâmico**: Menu do frontend adaptado às permissões do usuário  
+✅ **Seeds Automáticos**: 3 perfis padrão criados automaticamente (Administrador, Supervisor, Operador)  
+✅ **Validações de Segurança**: Regras de negócio para dashboards e operações críticas
 
-Banco de dados (PostgreSQL):
-- Tabelas: `usuarios`, `perfis`
-- Relacionamento: `usuarios.perfil_id -> perfis.id`
-- Valores de permissões armazenados como JSON (string) em `perfis.permissoes`
+### Tecnologias Utilizadas
 
+**Backend:**
+- FastAPI 0.104+
+- SQLAlchemy 2.0+ (ORM)
+- Pydantic v2 (Schemas)
+- python-jose (JWT)
+- passlib[bcrypt] (Hash de senhas)
+- pyotp (TOTP para 2FA)
+- qrcode + Pillow (Geração de QR Code)
+- PostgreSQL (Banco de dados)
 
-## Banco de dados
+**Frontend:**
+- React 18 + TypeScript
+- React Router DOM (Navegação)
+- Tailwind CSS (Estilização)
+- lucide-react (Ícones)
+- sonner (Notificações toast)
 
-### Tabela perfis
+### Arquitetura e Componentes
 
-Campos principais (ver modelo em `models/autocare_models.py`):
-- id: integer, PK
-- nome: string(100), único, obrigatório
-- descricao: text
-- permissoes: text — JSON string com as chaves abaixo
-- ativo: boolean (default true)
-- editavel: boolean (default true; Administrador é false)
-- created_at, updated_at: timestamps
+### Arquitetura e Componentes
 
-Estrutura SQL equivalente:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        FRONTEND                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Login.tsx  │  │TwoFactor.tsx │  │AuthContext   │     │
+│  │              │→ │              │→ │              │     │
+│  │ username/pwd │  │ TOTP code    │  │ JWT + User   │     │
+│  └──────────────┘  └──────────────┘  └──────┬───────┘     │
+│                                               ↓              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │              Protected Routes + Layout                │  │
+│  │  ┌────────────┐  ┌─────────────┐  ┌──────────────┐  │  │
+│  │  │ Gerenciar  │  │  Gerenciar  │  │ hasPermission│  │  │
+│  │  │  Usuários  │  │    Perfis   │  │    Filter    │  │  │
+│  │  └────────────┘  └─────────────┘  └──────────────┘  │  │
+│  └──────────────────────────────────────────────────────┘  │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ HTTP/JSON (Bearer Token)
+┌───────────────────────▼─────────────────────────────────────┐
+│                         BACKEND                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │                 FastAPI Routers                       │  │
+│  │  ┌────────────┐  ┌─────────────┐  ┌──────────────┐  │  │
+│  │  │autocare_   │  │ autocare_   │  │  autocare_   │  │  │
+│  │  │  auth.py   │  │usuarios.py  │  │  perfis.py   │  │  │
+│  │  └────────────┘  └─────────────┘  └──────────────┘  │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │             Security & Auth Functions                 │  │
+│  │  • verify_password  • create_access_token            │  │
+│  │  • get_current_user • generate_2fa_secret            │  │
+│  │  • verify_totp      • generate_qr_code               │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │              SQLAlchemy Models (ORM)                  │  │
+│  │  ┌───────────┐           ┌──────────┐               │  │
+│  │  │  Usuario  │──────────▶│  Perfil  │               │  │
+│  │  │           │ perfil_id │          │               │  │
+│  │  │ • id      │           │ • id     │               │  │
+│  │  │ • username│           │ • nome   │               │  │
+│  │  │ • senha_  │           │ • permis-│               │  │
+│  │  │   hash    │           │   soes   │               │  │
+│  │  │ • usar_2fa│           │ • editav │               │  │
+│  │  │ • secret_ │           │   el     │               │  │
+│  │  │   2fa     │           └──────────┘               │  │
+│  │  └───────────┘                                       │  │
+│  └──────────────────────────────────────────────────────┘  │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ SQL
+┌───────────────────────▼─────────────────────────────────────┐
+│                      POSTGRESQL                              │
+│  ┌──────────────┐           ┌──────────────┐               │
+│  │   usuarios   │──────────▶│    perfis    │               │
+│  │              │ FK        │              │               │
+│  │ • perfil_id ─┼──────────▶│ • permissoes │               │
+│  │              │           │   (JSON TEXT)│               │
+│  └──────────────┘           └──────────────┘               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Fluxo de Dados:**
+
+1. **Login**: Frontend → `/auth/login` → JWT Token (+ requires_2fa flag)
+2. **2FA Setup**: Frontend → `/auth/setup-2fa` → QR Code + Secret
+3. **2FA Verify**: Frontend → `/auth/verify-2fa` → JWT Token Final
+4. **Validação**: Frontend → `/auth/me` → Dados do usuário + permissões
+5. **CRUD Usuários**: Frontend → `/usuarios/*` → Operações CRUD
+6. **CRUD Perfis**: Frontend → `/perfis/*` → Operações CRUD com validações
+
+---
+
+## Banco de Dados - Estrutura Completa
+
+### Tabela: `perfis`
 
 ```sql
 CREATE TABLE perfis (
-  id SERIAL PRIMARY KEY,
-  nome VARCHAR(100) UNIQUE NOT NULL,
-  descricao TEXT,
-  permissoes TEXT NOT NULL,
-  ativo BOOLEAN DEFAULT TRUE,
-  editavel BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(100) UNIQUE NOT NULL,
+    descricao TEXT,
+    permissoes TEXT NOT NULL,  -- JSON string
+    ativo BOOLEAN DEFAULT TRUE,
+    editavel BOOLEAN DEFAULT TRUE,  -- FALSE para Administrador
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ
 );
 ```
 
-Chaves de permissão suportadas (mapeiam para itens de menu):
-- dashboard_gerencial
-- dashboard_operacional
-- clientes
-- veiculos
-- estoque
-- ordens_servico
-- fornecedores
-- relatorios
-- configuracoes
-- usuarios
-- perfis
+**Estrutura do JSON em `permissoes`:**
 
-Regra de negócio: somente o perfil "Administrador" pode ter ambos dashboard_gerencial e dashboard_operacional = true.
+```json
+{
+  "dashboard_gerencial": true,
+  "dashboard_operacional": false,
+  "clientes": true,
+  "veiculos": true,
+  "estoque": true,
+  "ordens_servico": true,
+  "fornecedores": true,
+  "relatorios": true,
+  "configuracoes": false,
+  "usuarios": false,
+  "perfis": false
+}
+```
 
-### Tabela usuarios
+**Chaves de Permissão (mapeiam para itens do menu):**
 
-Campos principais:
-- id: integer, PK
-- username: string(100), único
-- email: string(255), único
-- senha_hash: string(255) — bcrypt (via Passlib)
-- nome: string(255)
-- ativo: boolean
-- usar_2fa: boolean
-- secret_2fa: string(32) nullable — secret do TOTP (setado no setup do 2FA)
-- perfil_id: int NOT NULL (FK para perfis.id; default 3 — Operador)
-- created_at, updated_at: timestamps
+| Chave | Menu Correspondente |
+|-------|---------------------|
+| `dashboard_gerencial` | Dashboard (visão gerencial) |
+| `dashboard_operacional` | Dashboard (visão operacional) |
+| `clientes` | Clientes |
+| `veiculos` | Veículos |
+| `estoque` | Estoque |
+| `ordens_servico` | Ordens de Serviço |
+| `fornecedores` | Fornecedores |
+| `relatorios` | Relatórios |
+| `configuracoes` | Configurações |
+| `usuarios` | Gerenciar Usuários |
+| `perfis` | Gerenciar Perfis |
 
-Estrutura SQL equivalente:
+**Regra de Negócio Importante:**
+- ⚠️ **Apenas o perfil "Administrador" pode ter ambos `dashboard_gerencial` e `dashboard_operacional` = true**
+- Outros perfis devem escolher apenas um tipo de dashboard
+
+### Tabela: `usuarios`
 
 ```sql
 CREATE TABLE usuarios (
-  id SERIAL PRIMARY KEY,
-  username VARCHAR(100) UNIQUE NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  senha_hash VARCHAR(255) NOT NULL,
-  nome VARCHAR(255) NOT NULL,
-  ativo BOOLEAN DEFAULT TRUE,
-  usar_2fa BOOLEAN DEFAULT FALSE,
-  secret_2fa VARCHAR(32),
-  perfil_id INTEGER NOT NULL DEFAULT 3 REFERENCES perfis(id),
-  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    senha_hash VARCHAR(255) NOT NULL,  -- bcrypt
+    nome VARCHAR(255) NOT NULL,
+    ativo BOOLEAN DEFAULT TRUE,
+    usar_2fa BOOLEAN DEFAULT FALSE,
+    secret_2fa VARCHAR(32),  -- TOTP secret (pyotp)
+    perfil_id INTEGER NOT NULL DEFAULT 3 REFERENCES perfis(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ
 );
+
+CREATE INDEX idx_usuarios_username ON usuarios(username);
+CREATE INDEX idx_usuarios_email ON usuarios(email);
+CREATE INDEX idx_usuarios_perfil_id ON usuarios(perfil_id);
 ```
 
-### Seed automático de Perfis
+**Campos Importantes:**
 
-No startup do backend (`server.py`, função `lifespan`):
-- Se a tabela `perfis` estiver vazia, cria 3 perfis padrão com permissões em JSON:
-  - Administrador (id=1, acesso total, editavel=false)
-  - Supervisor (id=2, acesso intermediário)
-  - Operador (id=3, acesso básico)
-- Garante que usuários sem perfil recebam perfil_id=3
-- Garante que o usuário `admin` (se existir) esteja vinculado ao perfil Administrador
+- `senha_hash`: Hash bcrypt da senha (gerado com passlib)
+- `usar_2fa`: Flag para habilitar/desabilitar 2FA
+- `secret_2fa`: Secret do TOTP (32 caracteres base32) - apenas setado quando usuário configura 2FA
+- `perfil_id`: FK para `perfis.id` (default 3 = Operador)
+
+### Modelo SQLAlchemy Completo
 
 
 ## Backend — Autenticação e 2FA
