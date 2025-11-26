@@ -4,6 +4,8 @@ import { apiFetch } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { handlePlacaInput, formatPlaca } from '../utils/placaMask'
 import ModalVerificacaoVeiculo from '../components/ModalVerificacaoVeiculo'
+import ModalVerificacaoCliente from '../components/ModalVerificacaoCliente'
+import ModalCadastroCliente from '../components/ModalCadastroCliente'
 import Accordion from '../components/ui/Accordion'
 import { 
   Plus, 
@@ -203,13 +205,17 @@ function VeiculoModal({
   onClose, 
   veiculo, 
   onSubmit,
-  dadosPreenchidos
+  dadosPreenchidos,
+  onCadastrarNovoCliente,
+  clienteIdPreSelecionado
 }: {
   isOpen: boolean
   onClose: () => void
   veiculo?: Veiculo
   onSubmit: (data: VeiculoFormData) => void
   dadosPreenchidos?: { placa?: string; renavam?: string }
+  onCadastrarNovoCliente?: () => void
+  clienteIdPreSelecionado?: number
 }) {
   const { data: clientes = [] } = useClientes()
   
@@ -258,14 +264,14 @@ function VeiculoModal({
         chassis: '', 
         renavam: dadosPreenchidos?.renavam || '', 
         km_atual: 0, 
-        cliente_id: 0, 
+        cliente_id: clienteIdPreSelecionado || 0, 
         observacoes: ''
       })
     }
     // Limpar erros quando o modal abre/fecha
     setErrors({})
     setTouched({})
-  }, [veiculo, dadosPreenchidos, isOpen])
+  }, [veiculo, dadosPreenchidos, clienteIdPreSelecionado, isOpen])
 
   const validateField = (name: string, value: any): string => {
     switch (name) {
@@ -351,6 +357,13 @@ function VeiculoModal({
               value={formData.cliente_id}
               onChange={(e) => {
                 const value = parseInt(e.target.value)
+                // Se selecionou a opção de cadastrar novo cliente
+                if (value === -1) {
+                  if (onCadastrarNovoCliente) {
+                    onCadastrarNovoCliente()
+                  }
+                  return
+                }
                 setFormData({...formData, cliente_id: value})
                 if (touched.cliente_id) {
                   setErrors({ ...errors, cliente_id: validateField('cliente_id', value) })
@@ -369,6 +382,7 @@ function VeiculoModal({
                   {cliente.nome}
                 </option>
               ))}
+              <option value={-1} className="font-semibold text-blue-600">+ Cadastrar Novo Cliente</option>
             </select>
             {touched.cliente_id && errors.cliente_id && (
               <p className="mt-1 text-sm text-red-600 flex items-center">
@@ -847,6 +861,12 @@ export default function Veiculos() {
   const [veiculoPreenchido, setVeiculoPreenchido] = useState<any>(null)
   const [filtroMarca, setFiltroMarca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'EM_DIA' | 'PROXIMO_VENCIMENTO' | 'ATRASADO'>('TODOS')
+  
+  // Estados para controle de modais de cliente
+  const [isVerificacaoClienteOpen, setIsVerificacaoClienteOpen] = useState(false)
+  const [isNovoClienteModalOpen, setIsNovoClienteModalOpen] = useState(false)
+  const [clientePreenchido, setClientePreenchido] = useState<any>(null)
+  const [clienteSelecionadoId, setClienteSelecionadoId] = useState<number>(0)
 
   const queryClient = useQueryClient()
   const { data: veiculos = [], isLoading, error } = useVeiculos()
@@ -1030,6 +1050,59 @@ export default function Veiculos() {
       console.error('Erro ao reativar veículo:', error)
       alert('Erro ao reativar veículo')
     }
+  }
+
+  // Funções para o fluxo de cadastro de cliente
+  const handleCadastrarNovoCliente = () => {
+    // Fecha modal de veículo e abre modal de verificação de cliente
+    setIsModalOpen(false)
+    setIsVerificacaoClienteOpen(true)
+  }
+
+  const handleClienteEncontrado = (cliente: any) => {
+    // Cliente encontrado, armazena o ID para seleção automática
+    setClienteSelecionadoId(cliente.id)
+    setIsVerificacaoClienteOpen(false)
+    // Atualiza a lista de clientes no cache
+    queryClient.invalidateQueries({ queryKey: ['clientes-dropdown'] })
+    // Reabre o modal de veículo
+    setIsModalOpen(true)
+  }
+
+  const handleCriarNovoCliente = (cpfCnpj: string, tipo: 'CPF' | 'CNPJ') => {
+    // Preenche dados do cliente e abre modal de cadastro
+    setClientePreenchido({
+      cpf_cnpj: cpfCnpj,
+      tipo: tipo === 'CPF' ? 'PF' : 'PJ'
+    })
+    setIsVerificacaoClienteOpen(false)
+    setIsNovoClienteModalOpen(true)
+  }
+
+  const handleReativarCliente = async (cliente: any) => {
+    try {
+      await apiFetch(`/clientes/${cliente.id}/reativar`, {
+        method: 'POST'
+      })
+      queryClient.invalidateQueries({ queryKey: ['clientes-dropdown'] })
+      setIsVerificacaoClienteOpen(false)
+      alert('Cliente reativado com sucesso!')
+      // Reabre o modal de veículo
+      setIsModalOpen(true)
+    } catch (error) {
+      console.error('Erro ao reativar cliente:', error)
+      alert('Erro ao reativar cliente')
+    }
+  }
+
+  const handleClienteCadastrado = (_novoCliente: any) => {
+    // Cliente cadastrado com sucesso
+    setIsNovoClienteModalOpen(false)
+    setClientePreenchido(null)
+    // Atualiza a lista de clientes
+    queryClient.invalidateQueries({ queryKey: ['clientes-dropdown'] })
+    // Reabre o modal de veículo
+    setIsModalOpen(true)
   }
 
   // Confirm modal for deletion
@@ -1338,10 +1411,13 @@ export default function Veiculos() {
           setIsModalOpen(false)
           setEditingVeiculo(undefined)
           setVeiculoPreenchido(null)
+          setClienteSelecionadoId(0)
         }}
         veiculo={editingVeiculo}
         onSubmit={handleSubmit}
         dadosPreenchidos={veiculoPreenchido}
+        onCadastrarNovoCliente={handleCadastrarNovoCliente}
+        clienteIdPreSelecionado={clienteSelecionadoId}
       />
 
       <HistoricoModal
@@ -1359,6 +1435,26 @@ export default function Veiculos() {
         onVeiculoEncontrado={handleVeiculoEncontrado}
         onCriarNovo={handleCriarNovoVeiculo}
         onReativar={handleReativarVeiculo}
+      />
+
+      {/* Modais de Cliente */}
+      <ModalVerificacaoCliente
+        isOpen={isVerificacaoClienteOpen}
+        onClose={() => setIsVerificacaoClienteOpen(false)}
+        onClienteEncontrado={handleClienteEncontrado}
+        onCriarNovo={handleCriarNovoCliente}
+        onReativar={handleReativarCliente}
+        textoBotaoClienteEncontrado="Selecionar Cliente"
+      />
+
+      <ModalCadastroCliente
+        isOpen={isNovoClienteModalOpen}
+        onClose={() => {
+          setIsNovoClienteModalOpen(false)
+          setClientePreenchido(null)
+        }}
+        onSuccess={handleClienteCadastrado}
+        termoBusca={clientePreenchido?.cpf_cnpj || ''}
       />
 
       <ConfirmModal

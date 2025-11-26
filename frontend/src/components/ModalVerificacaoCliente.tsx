@@ -19,6 +19,7 @@ interface ModalVerificacaoClienteProps {
   onClienteEncontrado: (cliente: ClienteVerificacao) => void
   onCriarNovo: (cpfCnpj: string, tipo: 'CPF' | 'CNPJ') => void
   onReativar: (cliente: ClienteVerificacao) => void
+  textoBotaoClienteEncontrado?: string
 }
 
 export default function ModalVerificacaoCliente({
@@ -26,7 +27,8 @@ export default function ModalVerificacaoCliente({
   onClose,
   onClienteEncontrado,
   onCriarNovo,
-  onReativar
+  onReativar,
+  textoBotaoClienteEncontrado = 'Ver Detalhes do Cliente'
 }: ModalVerificacaoClienteProps) {
   const [cpfCnpj, setCpfCnpj] = useState('')
   const [loading, setLoading] = useState(false)
@@ -165,7 +167,7 @@ export default function ModalVerificacaoCliente({
                     onClick={() => resultado.cliente && onClienteEncontrado(resultado.cliente)}
                     className="flex-1 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors font-medium"
                   >
-                    Ver Detalhes do Cliente
+                    {textoBotaoClienteEncontrado}
                   </button>
                   <button
                     onClick={handleClose}
