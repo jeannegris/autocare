@@ -86,56 +86,7 @@ function useVeiculos() {
     queryKey: ['veiculos'],
     queryFn: async (): Promise<Veiculo[]> => {
       return await apiFetch('/veiculos') as Veiculo[]
-    },
-    // Dados mockados para desenvolvimento
-    placeholderData: [
-      {
-        id: 1,
-        placa: 'ABC-1234',
-        marca: 'Honda',
-        modelo: 'Civic',
-        ano: 2020,
-        cor: 'Prata',
-        combustivel: 'FLEX' as const,
-        chassis: '1HGBH41JXMN109186',
-        renavam: '12345678901',
-        km_atual: 45000,
-        cliente_id: 1,
-        cliente_nome: 'João Silva',
-        cliente_telefone: '(11) 99999-9999',
-        observacoes: 'Veículo em ótimo estado',
-        created_at: '2024-01-15T10:00:00Z',
-        updated_at: '2024-01-15T10:00:00Z',
-        total_servicos: 8,
-        ultima_manutencao: '2024-08-15',
-        proxima_manutencao: '2024-11-15',
-        km_proxima_manutencao: 50000,
-        status_manutencao: 'PROXIMO_VENCIMENTO' as const
-      },
-      {
-        id: 2,
-        placa: 'XYZ-5678',
-        marca: 'Toyota',
-        modelo: 'Corolla',
-        ano: 2019,
-        cor: 'Branco',
-        combustivel: 'FLEX' as const,
-        chassis: '2T1BURHE0KC123456',
-        renavam: '98765432101',
-        km_atual: 62000,
-        cliente_id: 2,
-        cliente_nome: 'Maria Santos',
-        cliente_telefone: '(11) 88888-8888',
-        observacoes: '',
-        created_at: '2024-01-16T14:30:00Z',
-        updated_at: '2024-01-16T14:30:00Z',
-        total_servicos: 12,
-        ultima_manutencao: '2024-09-10',
-        proxima_manutencao: '2024-12-10',
-        km_proxima_manutencao: 65000,
-        status_manutencao: 'EM_DIA' as const
-      }
-    ]
+    }
   })
 }
 
@@ -143,13 +94,7 @@ function useVeiculos() {
 function useClientes() {
   return useQuery({
     queryKey: ['clientes-dropdown'],
-    queryFn: async () => await apiFetch('/clientes'),
-    placeholderData: [
-      { id: 1, nome: 'João Silva' },
-      { id: 2, nome: 'Maria Santos' },
-      { id: 3, nome: 'Carlos Lima' },
-      { id: 4, nome: 'Ana Costa' }
-    ]
+    queryFn: async () => await apiFetch('/clientes')
   })
 }
 
@@ -160,32 +105,7 @@ function useManutencaoHistorico(veiculoId: number) {
     queryFn: async (): Promise<ManutencaoHistorico[]> => {
       return await apiFetch(`/veiculos/${veiculoId}/manutencoes`) as ManutencaoHistorico[]
     },
-    enabled: !!veiculoId,
-    placeholderData: [
-      {
-        id: 1,
-        veiculo_id: veiculoId,
-        tipo: 'Troca de óleo',
-        descricao: 'Troca de óleo e filtro',
-        km_realizada: 40000,
-        data_realizada: '2024-08-15',
-        km_proxima: 45000,
-        data_proxima: '2024-11-15',
-        valor: 180.00,
-        observacoes: 'Usado óleo sintético'
-      },
-      {
-        id: 2,
-        veiculo_id: veiculoId,
-        tipo: 'Revisão completa',
-        descricao: 'Revisão dos 30.000km',
-        km_realizada: 30000,
-        data_realizada: '2024-02-10',
-        km_proxima: 40000,
-        valor: 450.00,
-        observacoes: ''
-      }
-    ]
+    enabled: !!veiculoId
   })
 }
 
