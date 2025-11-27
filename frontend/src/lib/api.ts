@@ -18,6 +18,11 @@ export async function apiFetch(path: string, init?: RequestInit) {
     if (initCopy.body && !(initCopy.body instanceof FormData) && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json')
     }
+    // Adicionar token de autenticação se disponível
+    const token = localStorage.getItem('token')
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
     initCopy.headers = headers
   } catch (e) {
     // Fallback silencioso: se algo der errado, apenas use o init original

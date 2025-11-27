@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from typing import List, Optional
 from datetime import datetime
 import pytz
 from db import get_db
-from models.autocare_models import Produto, Categoria, MovimentoEstoque, Fornecedor, LoteEstoque
+from models.autocare_models import Produto, Categoria, MovimentoEstoque, Fornecedor, LoteEstoque, Usuario
+from routes.autocare_auth import get_current_user
 from schemas.schemas_estoque import (
     ProdutoCreate,
     ProdutoUpdate,
@@ -23,6 +25,21 @@ from schemas.schemas_estoque import (
 import logging
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Função para obter usuário opcional (não levanta exceção se não autenticado)
+security = HTTPBearer(auto_error=False)
+
+def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> Optional[Usuario]:
+    """Obter usuário atual se autenticado, caso contrário retorna None"""
+    if not credentials:
+        return None
+    try:
+        return get_current_user(credentials, db)
+    except:
+        return None
 
 # =============================================================================
 # PRODUTOS
@@ -339,7 +356,11 @@ def listar_movimentos_estoque(
     return movimentos
 
 @router.post("/movimentos", response_model=MovimentacaoEstoqueResponse, status_code=status.HTTP_201_CREATED)
-def criar_movimento_estoque(movimento_data: MovimentacaoEstoqueCreate, db: Session = Depends(get_db)):
+def criar_movimento_estoque(
+    movimento_data: MovimentacaoEstoqueCreate, 
+    db: Session = Depends(get_db),
+    current_user: Optional[Usuario] = Depends(get_current_user_optional)
+):
     """Registrar movimento de estoque com controle de lotes FIFO"""
     
     # Verificar se produto existe
@@ -363,6 +384,10 @@ def criar_movimento_estoque(movimento_data: MovimentacaoEstoqueCreate, db: Sessi
     tz = pytz.timezone('America/Sao_Paulo')
     movimento_dict = movimento_data.dict()
     movimento_dict['data_movimentacao'] = datetime.now(tz)
+    # Adicionar informações do usuário se autenticado
+    if current_user:
+        movimento_dict['usuario_id'] = current_user.id
+        movimento_dict['usuario_nome'] = current_user.nome
     movimento = MovimentoEstoque(**movimento_dict)
     db.add(movimento)
     db.flush()  # Para obter o ID do movimento

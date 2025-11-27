@@ -1142,7 +1142,7 @@ function HistoricoMovimentacoesModal({
         ) : (
           <div className="space-y-4 max-h-96 overflow-y-auto">
             {movimentacoes.map((mov) => (
-              <div key={mov.id} className={`p-4 rounded-lg border-l-4 ${
+              <div key={mov.id} className={`relative p-4 rounded-lg border-l-4 ${
                 mov.tipo === 'ENTRADA' ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50'
               }`}>
                 <div className="flex justify-between items-start mb-2">
@@ -1159,7 +1159,7 @@ function HistoricoMovimentacoesModal({
                         {mov.tipo === 'ENTRADA' ? 'Entrada' : 'Saída'} - {mov.motivo}
                       </p>
                       <p className="text-sm text-gray-600">
-                        {format(new Date(mov.data_movimentacao), 'dd/MM/yyyy HH:mm')} • {mov.usuario_nome}
+                        {format(new Date(mov.data_movimentacao), 'dd/MM/yyyy HH:mm')}
                       </p>
                     </div>
                   </div>
@@ -1229,6 +1229,15 @@ function HistoricoMovimentacoesModal({
                   <div className="mt-2">
                     <span className="font-medium text-sm text-gray-600">Observações:</span>
                     <p className="text-sm text-gray-600">{mov.observacoes}</p>
+                  </div>
+                )}
+                
+                {/* Informação do usuário no canto inferior direito */}
+                {mov.usuario_nome && (
+                  <div className="mt-3 text-right">
+                    <p className="text-xs text-gray-500 italic">
+                      Movimentado por: {mov.usuario_nome}
+                    </p>
                   </div>
                 )}
               </div>
