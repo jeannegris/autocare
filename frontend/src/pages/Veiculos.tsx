@@ -22,7 +22,8 @@ import {
   Download,
   AlertTriangle,
   Clock,
-  CheckCircle
+  CheckCircle,
+  ChevronDown
 } from 'lucide-react'
 import ConfirmModal from '../components/ConfirmModal'
 import { format, differenceInDays } from 'date-fns'
@@ -235,6 +236,29 @@ function VeiculoModal({
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const dropdownRef = React.useRef<HTMLDivElement>(null)
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false)
+        setSearchTerm('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Focar no campo de busca quando abrir o dropdown
+  useEffect(() => {
+    if (isDropdownOpen && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [isDropdownOpen])
 
   // Sincroniza formulário quando a prop veiculo muda (prefill ao editar)
   useEffect(() => {
@@ -353,37 +377,113 @@ function VeiculoModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Cliente *
             </label>
-            <select
-              value={formData.cliente_id}
-              onChange={(e) => {
-                const value = parseInt(e.target.value)
-                // Se selecionou a opção de cadastrar novo cliente
-                if (value === -1) {
-                  if (onCadastrarNovoCliente) {
-                    onCadastrarNovoCliente()
+            <div className="relative" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                onBlur={() => {
+                  if (touched.cliente_id) return
+                  setTouched({ ...touched, cliente_id: true })
+                }}
+                className={`w-full border rounded-md px-3 py-2 text-left focus:outline-none focus:ring-2 focus:border-transparent flex items-center justify-between ${
+                  touched.cliente_id && errors.cliente_id
+                    ? 'border-red-300 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
+              >
+                <span className={formData.cliente_id === 0 ? 'text-gray-500' : 'text-gray-900'}>
+                  {formData.cliente_id === 0 
+                    ? 'Selecione um cliente' 
+                    : clientes.find((c: any) => c.id === formData.cliente_id)?.nome || 'Selecione um cliente'
                   }
-                  return
-                }
-                setFormData({...formData, cliente_id: value})
-                if (touched.cliente_id) {
-                  setErrors({ ...errors, cliente_id: validateField('cliente_id', value) })
-                }
-              }}
-              onBlur={() => handleBlur('cliente_id')}
-              className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:border-transparent ${
-                touched.cliente_id && errors.cliente_id
-                  ? 'border-red-300 focus:ring-red-500'
-                  : 'border-gray-300 focus:ring-blue-500'
-              }`}
-            >
-              <option value={0}>Selecione um cliente</option>
-              {clientes.map((cliente: any) => (
-                <option key={cliente.id} value={cliente.id}>
-                  {cliente.nome}
-                </option>
-              ))}
-              <option value={-1} className="font-semibold text-blue-600">+ Cadastrar Novo Cliente</option>
-            </select>
+                </span>
+                <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${isDropdownOpen ? 'transform rotate-180' : ''}`} />
+              </button>
+              
+              {isDropdownOpen && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
+                  {/* Campo de busca */}
+                  <div className="p-2 border-b border-gray-200">
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Digite para buscar..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  
+                  {/* Lista com scroll - altura máxima para 7 itens */}
+                  <div className="max-h-[280px] overflow-y-auto">
+                    {!searchTerm && (
+                      <div
+                        onClick={() => {
+                          setFormData({...formData, cliente_id: 0})
+                          setIsDropdownOpen(false)
+                          setSearchTerm('')
+                          if (touched.cliente_id) {
+                            setErrors({ ...errors, cliente_id: validateField('cliente_id', 0) })
+                          }
+                        }}
+                        className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-gray-500"
+                      >
+                        Selecione um cliente
+                      </div>
+                    )}
+                    {[...clientes]
+                      .sort((a: any, b: any) => a.nome.localeCompare(b.nome))
+                      .filter((cliente: any) => 
+                        cliente.nome.toLowerCase().includes(searchTerm.toLowerCase())
+                      )
+                      .map((cliente: any) => (
+                        <div
+                          key={cliente.id}
+                          onClick={() => {
+                            setFormData({...formData, cliente_id: cliente.id})
+                            setIsDropdownOpen(false)
+                            setSearchTerm('')
+                            if (touched.cliente_id) {
+                              setErrors({ ...errors, cliente_id: validateField('cliente_id', cliente.id) })
+                            }
+                          }}
+                          className={`px-3 py-2 hover:bg-gray-100 cursor-pointer ${
+                            formData.cliente_id === cliente.id ? 'bg-blue-50 text-blue-600' : 'text-gray-900'
+                          }`}
+                        >
+                          {cliente.nome}
+                        </div>
+                      ))
+                    }
+                    {[...clientes]
+                      .filter((cliente: any) => 
+                        cliente.nome.toLowerCase().includes(searchTerm.toLowerCase())
+                      ).length === 0 && searchTerm && (
+                        <div className="px-3 py-2 text-gray-500 text-center">
+                          Nenhum cliente encontrado
+                        </div>
+                      )}
+                  </div>
+                  {/* Opção fixa no rodapé */}
+                  <div className="border-t border-gray-200 bg-gray-50">
+                    <div
+                      onClick={() => {
+                        setIsDropdownOpen(false)
+                        setSearchTerm('')
+                        if (onCadastrarNovoCliente) {
+                          onCadastrarNovoCliente()
+                        }
+                      }}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-blue-600 font-semibold flex items-center"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Cadastrar Novo Cliente
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             {touched.cliente_id && errors.cliente_id && (
               <p className="mt-1 text-sm text-red-600 flex items-center">
                 <AlertTriangle className="h-4 w-4 mr-1" />
@@ -1095,8 +1195,11 @@ export default function Veiculos() {
     }
   }
 
-  const handleClienteCadastrado = (_novoCliente: any) => {
-    // Cliente cadastrado com sucesso
+  const handleClienteCadastrado = (novoCliente: any) => {
+    // Cliente cadastrado com sucesso, armazena o ID para seleção automática
+    if (novoCliente && novoCliente.id) {
+      setClienteSelecionadoId(novoCliente.id)
+    }
     setIsNovoClienteModalOpen(false)
     setClientePreenchido(null)
     // Atualiza a lista de clientes
