@@ -44,6 +44,7 @@ export default function ModalNovaOrdem({
     tempo_estimado_horas: 0,
     descricao_servico: '',
     valor_servico: 0,
+    valor_mao_obra_avulso: 0, // Novo campo
     percentual_desconto: 0,
     tipo_desconto: 'TOTAL',
     observacoes: '',
@@ -221,13 +222,15 @@ export default function ModalNovaOrdem({
       }
     }
 
-    const valorTotal = valorSubtotal - valorDesconto;
+    const valorMaoObraAvulso = parseFormattedValue(formData.valor_mao_obra_avulso);
+    const valorTotal = valorSubtotal - valorDesconto - valorMaoObraAvulso;
 
     return {
       valorPecas,
       valorServicos,
       valorSubtotal,
       valorDesconto,
+      valorMaoObraAvulso,
       valorTotal
     };
   };
@@ -478,6 +481,7 @@ export default function ModalNovaOrdem({
         km_veiculo: Number(formData.km_veiculo || 0),
         tempo_estimado_horas: Number(formData.tempo_estimado_horas || 0),
         valor_servico: parseFormattedValue(formData.valor_servico),
+        valor_mao_obra_avulso: parseFormattedValue(formData.valor_mao_obra_avulso) || 0,
         percentual_desconto: Number(formData.percentual_desconto || 0),
         itens: formData.itens.map(item => ({
           ...item,
@@ -749,6 +753,30 @@ export default function ModalNovaOrdem({
             </div>
           )}
 
+          {/* Pagamento de Mão de Obra Avulso */}
+          {mostrarServicos && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pagamento de Mão de Obra Avulso (R$)
+              </label>
+              <input
+                type="text"
+                value={formData.valor_mao_obra_avulso || ''}
+                onChange={(e) => handleInputChange('valor_mao_obra_avulso', e.target.value)}
+                onBlur={(e) => {
+                  const valor = parseFormattedValue(e.target.value) || 0;
+                  const valorFormatado = valor > 0 ? valor.toFixed(2).replace('.', ',') : '';
+                  handleInputChange('valor_mao_obra_avulso', valorFormatado);
+                }}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0,00"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Valor pago a funcionário freelancer/avulso. Será subtraído do valor total da nota.
+              </p>
+            </div>
+          )}
+
           {/* Produtos */}
           {mostrarProdutos && (
             <div>
@@ -978,7 +1006,7 @@ export default function ModalNovaOrdem({
               <Calculator className="mr-2 h-4 w-4" />
               Resumo Financeiro
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
               <div>
                 <span className="text-gray-600">Peças/Produtos:</span>
                 <div className="font-medium">R$ {valores.valorPecas.toFixed(2)}</div>
@@ -991,6 +1019,12 @@ export default function ModalNovaOrdem({
                 <span className="text-gray-600">Desconto:</span>
                 <div className="font-medium text-red-600">- R$ {valores.valorDesconto.toFixed(2)}</div>
               </div>
+              {valores.valorMaoObraAvulso > 0 && (
+                <div>
+                  <span className="text-gray-600">Mão de Obra:</span>
+                  <div className="font-medium text-red-600">- R$ {valores.valorMaoObraAvulso.toFixed(2)}</div>
+                </div>
+              )}
               <div className="bg-white border border-blue-300 rounded p-2">
                 <span className="text-gray-600">Total:</span>
                 <div className="font-bold text-lg text-green-600">R$ {valores.valorTotal.toFixed(2)}</div>

@@ -1,110 +1,199 @@
-import { apiFetch } from '@/lib/api'
-import type { 
-  OrdemServicoNova, 
-  OrdemServicoList,
-  ClienteBuscaResponse,
-  ClienteCadastroForm,
-  ProdutoAutocomplete
-} from '@/types/ordem-servico'
+// Tipos para a nova estrutura de ordem de serviço
 
-// ============= CLIENTES ============= (v2 - usando GET)
-export async function buscarCliente(documento: string): Promise<ClienteBuscaResponse | null> {
-  console.log('🔍 [v2-GET] Buscando cliente com documento:', documento);
-  try {
-    // Teste com GET para verificar se é problema de cache
-    const response = await apiFetch(`/ordens/buscar-cliente?documento=${encodeURIComponent(documento)}`)
-    console.log('✅ [v2-GET] Resposta da busca:', response);
-    return response
-  } catch (error: any) {
-    console.error('❌ [v2-GET] Erro na busca de cliente:', error);
-    if (error.status === 404) {
-      return null
-    }
-    throw error
-  }
+export interface ClienteBusca {
+  termo_busca: string;
 }
 
-export async function criarCliente(dados: ClienteCadastroForm): Promise<any> {
-  return apiFetch('/clientes', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(dados)
-  })
+export interface ClienteBuscaResponse {
+  encontrado: boolean;
+  cliente?: {
+    id: number;
+    nome: string;
+    cpf_cnpj?: string;
+    email?: string;
+    telefone?: string;
+    telefone2?: string;
+    whatsapp?: string;
+    veiculos: Veiculo[];
+  };
+  message?: string;
 }
 
-// ============= PRODUTOS =============
-export async function buscarProdutos(termo: string): Promise<ProdutoAutocomplete[]> {
-  if (!termo.trim()) return []
-  
-  const response = await apiFetch(`/ordens/produtos/autocomplete?q=${encodeURIComponent(termo)}`)
-  return response
+export interface VeiculoBusca {
+  placa: string;
 }
 
-// ============= ORDENS =============
-export async function criarOrdem(ordem: OrdemServicoNova): Promise<OrdemServicoNova> {
-  return apiFetch('/ordens', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(ordem)
-  })
+export interface VeiculoBuscaResponse {
+  encontrado: boolean;
+  veiculo?: {
+    id: number;
+    marca: string;
+    modelo: string;
+    ano: number;
+    placa: string;
+    cor?: string;
+    km_atual: number;
+    combustivel?: string;
+    chassis?: string;
+    renavam?: string;
+  };
+  cliente?: {
+    id: number;
+    nome: string;
+    cpf_cnpj?: string;
+    email?: string;
+    telefone?: string;
+    telefone2?: string;
+    whatsapp?: string;
+    veiculos: Veiculo[];
+  };
+  message?: string;
 }
 
-export async function listarOrdens(params?: {
-  status?: string
-  cliente_id?: number
-  veiculo_id?: number
-  data_inicio?: string
-  data_fim?: string
-}): Promise<OrdemServicoList[]> {
-  const searchParams = new URLSearchParams()
-  
-  if (params?.status) searchParams.set('status', params.status)
-  if (params?.cliente_id) searchParams.set('cliente_id', params.cliente_id.toString())
-  if (params?.veiculo_id) searchParams.set('veiculo_id', params.veiculo_id.toString())
-  if (params?.data_inicio) searchParams.set('data_inicio', params.data_inicio)
-  if (params?.data_fim) searchParams.set('data_fim', params.data_fim)
-  
-  const queryString = searchParams.toString()
-  const url = queryString ? `/ordens?${queryString}` : '/ordens'
-  
-  return apiFetch(url)
+export interface Veiculo {
+  id: number;
+  marca: string;
+  modelo: string;
+  ano: number;
+  placa: string;
+  cor?: string;
+  km_atual: number;
 }
 
-export async function obterOrdem(id: number): Promise<OrdemServicoNova> {
-  return apiFetch(`/ordens/${id}`)
+export interface ProdutoAutocomplete {
+  id: number;
+  codigo: string;
+  nome: string;
+  descricao?: string;
+  preco_venda: number;
+  quantidade_atual: number;
+  unidade: string;
 }
 
-export async function atualizarOrdem(id: number, dados: Partial<OrdemServicoNova>): Promise<OrdemServicoNova> {
-  return apiFetch(`/ordens/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(dados)
-  })
+export interface LoteDisponivel {
+  id: number;
+  numero_lote?: string;
+  saldo_atual: number;
+  preco_venda_unitario: number;
+  preco_custo_unitario: number;
+  data_entrada: string;
+  fornecedor_id?: number;
 }
 
-export async function excluirOrdem(id: number): Promise<void> {
-  await apiFetch(`/ordens/${id}`, {
-    method: 'DELETE'
-  })
+export interface ProdutoComLotes {
+  produto: {
+    id: number;
+    codigo: string;
+    nome: string;
+    unidade: string;
+    quantidade_total: number;
+  };
+  lotes: LoteDisponivel[];
+  tem_lotes_multiplos: boolean;
 }
 
-// ============= ESTATÍSTICAS =============
-export async function obterEstatisticasOrdens(): Promise<{
-  total: number
-  pendentes: number
-  em_andamento: number
-  aguardando_peca: number
-  aguardando_aprovacao: number
-  concluidas: number
-  canceladas: number
-  valor_total: number
-  valor_mes_atual: number
-}> {
-  return apiFetch('/ordens/estatisticas')
+export interface ItemOrdemNova {
+  id?: number;
+  produto_id?: number;
+  lote_id?: number;
+  descricao: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+  tipo: 'PRODUTO' | 'SERVICO';
+  desconto_item?: number;
+  observacoes?: string;
+  produto_nome?: string;
+}
+
+export interface OrdemServicoNova {
+  id?: number;
+  numero?: string;
+  cliente_id: number;
+  veiculo_id: number | null; // Opcional para VENDA (pode ser null)
+  tipo_ordem: 'VENDA' | 'SERVICO' | 'VENDA_SERVICO';
+  data_ordem?: string;
+  km_veiculo?: number;
+  tempo_estimado_horas?: number;
+  descricao_servico?: string;
+  valor_servico: number;
+  valor_mao_obra_avulso?: number; // Novo campo
+  percentual_desconto?: number;
+  tipo_desconto: 'VENDA' | 'SERVICO' | 'TOTAL';
+  observacoes?: string;
+  funcionario_responsavel?: string;
+  itens: ItemOrdemNova[];
+  // Campos de resposta
+  status?: string;
+  data_abertura?: string;
+  data_conclusao?: string;
+  valor_pecas?: number;
+  valor_subtotal?: number;
+  valor_desconto?: number;
+  valor_total?: number;
+  tempo_gasto_horas?: number;
+  aprovado_cliente?: boolean;
+  forma_pagamento?: string;
+  motivo_cancelamento?: string;  // Motivo do cancelamento (obrigatório quando status = CANCELADA)
+  created_at?: string;
+  updated_at?: string;
+  // Dados relacionados
+  cliente_nome?: string;
+  cliente_telefone?: string;
+  cliente_email?: string;
+  veiculo_placa?: string;
+  veiculo_marca?: string;
+  veiculo_modelo?: string;
+  veiculo_ano?: number;
+}
+
+export interface OrdemServicoList {
+  id: number;
+  numero: string;
+  cliente_id: number;
+  cliente_nome?: string;
+  veiculo_id: number | null; // Opcional para VENDA (pode ser null)
+  veiculo_placa?: string;
+  tipo_ordem: string;
+  data_abertura: string;
+  status: string;
+  valor_total: number;
+}
+
+// Tipos para formulários
+export interface ClienteCadastroForm {
+  nome: string;
+  cpf_cnpj?: string;
+  email?: string;
+  telefone?: string;
+  telefone2?: string;
+  whatsapp?: string;
+  endereco?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  tipo: 'PF' | 'PJ';
+  data_nascimento?: string;
+  nome_fantasia?: string;
+  razao_social?: string;
+  contato_responsavel?: string;
+  rg_ie?: string;
+  observacoes?: string;
+}
+
+export interface VeiculoCadastroForm {
+  cliente_id: number;
+  marca: string;
+  modelo: string;
+  ano: number;
+  cor?: string;
+  placa: string;
+  chassis?: string;
+  renavam?: string;
+  km_atual?: number;
+  combustivel?: string;
+  observacoes?: string;
 }

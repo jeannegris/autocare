@@ -43,6 +43,7 @@ export default function ModalEditarOrdem({
     km_veiculo: '',
     data_ordem: '',
     valor_servico: '',
+    valor_mao_obra_avulso: '', // Novo campo
     percentual_desconto: '',
     tipo_desconto: 'VENDA' as 'VENDA' | 'SERVICO' | 'TOTAL',
     itens: [] as ItemOrdemNova[],
@@ -67,6 +68,7 @@ export default function ModalEditarOrdem({
         data_ordem: ordem.data_ordem ? 
           new Date(ordem.data_ordem).toISOString().split('T')[0] : '',
         valor_servico: ordem.valor_servico ? String(ordem.valor_servico) : '',
+        valor_mao_obra_avulso: ordem.valor_mao_obra_avulso ? String(ordem.valor_mao_obra_avulso) : '',
         percentual_desconto: ordem.percentual_desconto ? String(ordem.percentual_desconto) : '',
         tipo_desconto: ordem.tipo_desconto || 'VENDA',
         itens: ordem.itens || [],
@@ -111,12 +113,13 @@ export default function ModalEditarOrdem({
       }
     }
     
-    const valorTotal = subtotal - valorDesconto;
+    const valorMaoObraAvulso = parseFloat(String(formData.valor_mao_obra_avulso).replace(',', '.')) || 0;
+    const valorTotal = subtotal - valorDesconto - valorMaoObraAvulso;
     
-    return { valorServico, valorPecas, subtotal, valorDesconto, valorTotal };
+    return { valorServico, valorPecas, subtotal, valorDesconto, valorMaoObraAvulso, valorTotal };
   };
 
-  const { valorServico, valorPecas, subtotal, valorDesconto, valorTotal } = calcularTotais();
+  const { valorServico, valorPecas, subtotal, valorDesconto, valorMaoObraAvulso, valorTotal } = calcularTotais();
 
   // Função para adicionar item de produto
   const handleAddProduto = () => {
@@ -202,6 +205,7 @@ export default function ModalEditarOrdem({
       funcionario_responsavel: formData.funcionario_responsavel,
       // Converter vírgula para ponto antes de parseFloat
       valor_servico: parseFloat(String(formData.valor_servico).replace(',', '.')) || 0,
+      valor_mao_obra_avulso: parseFloat(String(formData.valor_mao_obra_avulso).replace(',', '.')) || 0,
       percentual_desconto: parseFloat(formData.percentual_desconto) || 0,
       tipo_desconto: formData.tipo_desconto,
       itens: formData.itens.map(it => ({
@@ -610,6 +614,30 @@ export default function ModalEditarOrdem({
             </div>
           )}
 
+          {/* Pagamento de Mão de Obra Avulso */}
+          {mostrarServicos && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pagamento de Mão de Obra Avulso (R$)
+              </label>
+              <input
+                type="text"
+                value={formData.valor_mao_obra_avulso || ''}
+                onChange={(e) => handleChange('valor_mao_obra_avulso', e.target.value)}
+                onBlur={(e) => {
+                  const valor = parseFloat(String(e.target.value).replace(',', '.')) || 0;
+                  const valorFormatado = valor > 0 ? valor.toFixed(2).replace('.', ',') : '';
+                  handleChange('valor_mao_obra_avulso', valorFormatado);
+                }}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0,00"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Valor pago a funcionário freelancer/avulso. Será subtraído do valor total da nota.
+              </p>
+            </div>
+          )}
+
           {/* Observações */}
           <div>
             <label className="block mb-2 text-sm font-medium text-gray-700">
@@ -703,6 +731,12 @@ export default function ModalEditarOrdem({
                   <div className="flex justify-between">
                     <span className="text-gray-600">Desconto ({parseFloat(formData.percentual_desconto) || 0}%):</span>
                     <p className="font-medium text-red-600">-R$ {Number(valorDesconto).toFixed(2).replace('.', ',')}</p>
+                  </div>
+                )}
+                {valorMaoObraAvulso > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Mão de Obra Avulsa:</span>
+                    <p className="font-medium text-red-600">-R$ {Number(valorMaoObraAvulso).toFixed(2).replace('.', ',')}</p>
                   </div>
                 )}
                 <div className="flex justify-between pt-2 border-t">

@@ -102,6 +102,28 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         )
     ).scalar() or 0
     
+    # Custo mensal (soma do preco_custo * quantidade de todas as peças utilizadas nas OS do mês)
+    # Precisa fazer join com Produto para obter o preco_custo
+    custo_mensal = db.query(
+        func.sum(
+            func.coalesce(Produto.preco_custo, 0) * func.coalesce(ItemOrdem.quantidade, 0)
+        )
+    ).join(
+        ItemOrdem, Produto.id == ItemOrdem.produto_id, isouter=True
+    ).join(
+        OrdemServico, ItemOrdem.ordem_id == OrdemServico.id, isouter=True
+    ).filter(
+        and_(
+            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+            OrdemServico.data_conclusao >= inicio_mes,
+            OrdemServico.data_conclusao < fim_mes,
+            or_(ItemOrdem.tipo == "PRODUTO", ItemOrdem.tipo == "produto")
+        )
+    ).scalar() or Decimal('0.00')
+    
+    # Receita líquida (faturamento - custo)
+    receita_liquida = faturamento_mes - custo_mensal
+    
     return {
         "contadores": {
             "total_clientes": total_clientes,
@@ -117,6 +139,8 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         "financeiro": {
             "faturamento_mes": float(faturamento_mes),
             "faturamento_hoje": float(faturamento_hoje),
+            "custo_mensal": float(custo_mensal),
+            "receita_liquida": float(receita_liquida),
             "servicos_realizados": int(servicos_realizados),
             "pecas_vendidas": int(pecas_vendidas)
         }

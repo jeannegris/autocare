@@ -204,6 +204,7 @@ class OrdemServico(Base):
     # Valores separados por tipo
     valor_servico = Column(Numeric(10, 2), default=0)
     valor_mao_obra = Column(Numeric(10, 2), default=0)  # Campo legado mantido
+    valor_mao_obra_avulso = Column(Numeric(10, 2), default=0)  # Pagamento freelancer/avulso
     valor_pecas = Column(Numeric(10, 2), default=0)
     valor_subtotal = Column(Numeric(10, 2), default=0)
     # desconto armazenado no DB como 'desconto' (campo legado) e 'valor_desconto' (novo)

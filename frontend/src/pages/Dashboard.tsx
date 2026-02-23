@@ -59,6 +59,8 @@ interface DashboardStats {
   servicosRealizados: number;
   pecasVendidas: number;
   alertasEstoque: number;
+  custoMensal: number;
+  receitaLiquida: number;
 }
 
 interface ChartData {
@@ -151,7 +153,9 @@ function useDashboardData(): { data: DashboardData | null, isLoading: boolean, e
       crescimentoMensal: 0,
       servicosRealizados: resumoQuery.data?.financeiro?.servicos_realizados || 0,
       pecasVendidas: resumoQuery.data?.financeiro?.pecas_vendidas || 0,
-      alertasEstoque: resumoQuery.data?.contadores?.produtos_estoque_baixo || 0
+      alertasEstoque: resumoQuery.data?.contadores?.produtos_estoque_baixo || 0,
+      custoMensal: resumoQuery.data?.financeiro?.custo_mensal || 0,
+      receitaLiquida: resumoQuery.data?.financeiro?.receita_liquida || 0
     },
     chartData: {
       labels: vendasQuery.data?.meses || ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
@@ -362,13 +366,13 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid - Segunda linha */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {temPermissaoGerencial && (
           <div className="overflow-hidden bg-white rounded-lg shadow">
             <div className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Receita Mensal</p>
+                  <p className="text-sm font-medium text-gray-500">Receita Bruta</p>
                   <p className="text-3xl font-bold text-gray-900">
                     R$ {(stats.receitaMensal != null ? stats.receitaMensal : 0).toLocaleString('pt-BR')}
                   </p>
@@ -388,6 +392,48 @@ export default function Dashboard() {
               </div>
               <div className="mt-3 text-xs text-gray-600">
                 Receita hoje: R$ {(stats.receitaDiaria != null ? stats.receitaDiaria : 0).toLocaleString('pt-BR')}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {temPermissaoGerencial && (
+          <div className="overflow-hidden bg-white rounded-lg shadow">
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Custo Mensal</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    R$ {(stats.custoMensal != null ? stats.custoMensal : 0).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <TrendingDown className="w-8 h-8 text-red-600" />
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-gray-600">
+                Descontos e custos
+              </div>
+            </div>
+          </div>
+        )}
+
+        {temPermissaoGerencial && (
+          <div className="overflow-hidden bg-white rounded-lg shadow border-l-4 border-green-500">
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Receita Líquida</p>
+                  <p className="text-3xl font-bold text-green-600">
+                    R$ {(stats.receitaLiquida != null ? stats.receitaLiquida : 0).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <TrendingUp className="w-8 h-8 text-green-600" />
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-gray-600">
+                Bruta - Custos
               </div>
             </div>
           </div>

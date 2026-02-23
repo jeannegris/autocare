@@ -645,13 +645,19 @@ def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem]) -> dict:
         else:  # TOTAL
             valor_desconto = (valor_subtotal * percentual_desconto) / 100
     
-    valor_total = valor_subtotal - valor_desconto
+    # Mão de obra avulso (subtraído do total)
+    valor_mao_obra_avulso = ordem_data.get('valor_mao_obra_avulso', Decimal('0.00'))
+    if valor_mao_obra_avulso is None:
+        valor_mao_obra_avulso = Decimal('0.00')
+    
+    valor_total = valor_subtotal - valor_desconto - valor_mao_obra_avulso
     
     return {
         'valor_pecas': valor_pecas,
         'valor_servico': valor_servico,
         'valor_subtotal': valor_subtotal,
         'valor_desconto': valor_desconto,
+        'valor_mao_obra_avulso': valor_mao_obra_avulso,
         'valor_total': valor_total
     }
 
@@ -786,6 +792,7 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         ordem.valor_servico = valores['valor_servico']
         # valor_subtotal é uma property readonly, não pode ser setado
         ordem.valor_desconto = valores['valor_desconto']
+        ordem.valor_mao_obra_avulso = valores['valor_mao_obra_avulso']
         ordem.valor_total = valores['valor_total']
         
         # Campos de compatibilidade
@@ -1359,7 +1366,8 @@ def atualizar_ordem_servico(
         ordem_dict = {
             'valor_servico': ordem.valor_servico or Decimal('0.00'),
             'percentual_desconto': ordem.percentual_desconto or Decimal('0.00'),
-            'tipo_desconto': ordem.tipo_desconto or 'TOTAL'
+            'tipo_desconto': ordem.tipo_desconto or 'TOTAL',
+            'valor_mao_obra_avulso': ordem.valor_mao_obra_avulso or Decimal('0.00')
         }
         valores = calcular_valores_ordem(ordem_dict, itens_da_ordem)
 
@@ -1367,6 +1375,7 @@ def atualizar_ordem_servico(
         ordem.valor_servico = valores['valor_servico']
         # `valor_subtotal` é uma property readonly no modelo; não atribuímos diretamente
         ordem.valor_desconto = valores['valor_desconto']
+        ordem.valor_mao_obra_avulso = valores['valor_mao_obra_avulso']
         ordem.valor_total = valores['valor_total']
         ordem.valor_mao_obra = ordem.valor_servico
         ordem.desconto = ordem.valor_desconto

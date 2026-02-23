@@ -71,6 +71,7 @@ class OrdemServicoNovaBase(BaseModel):
     # Campos condicionais baseados no tipo
     descricao_servico: Optional[str] = None  # Obrigatório quando tipo for SERVICO ou VENDA_SERVICO
     valor_servico: Decimal = Decimal('0.00')  # Para tipos SERVICO ou VENDA_SERVICO
+    valor_mao_obra_avulso: Decimal = Decimal('0.00')  # Pagamento freelancer/avulso
     # Campos de desconto
     percentual_desconto: Decimal = Decimal('0.00')
     tipo_desconto: str = "TOTAL"  # VENDA, SERVICO, TOTAL
@@ -120,6 +121,7 @@ class OrdemServicoNovaUpdate(BaseModel):
     valor_servico: Optional[Decimal] = None
     percentual_desconto: Optional[Decimal] = None
     tipo_desconto: Optional[str] = None
+    valor_mao_obra_avulso: Optional[Decimal] = None  # Pagamento de mão de obra avulsa
     observacoes: Optional[str] = None
     funcionario_responsavel: Optional[str] = None
     status: Optional[str] = None
