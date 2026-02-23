@@ -1,0 +1,27 @@
+# Ambiente
+.env
+*.env
+
+# Logs
+logs/
+*.log
+
+# Node
+node_modules/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Banco
+backups/
+*.sql
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

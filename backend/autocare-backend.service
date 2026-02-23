@@ -1,0 +1,18 @@
+[Unit]
+Description=AutoCare backend (uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/autocare/backend
+# Rodar com usuário dedicado (autocare). Ajuste se necessário.
+User=autocare
+Group=autocare
+# Executar diretamente o binário python do venv para evitar 'source' em ExecStart
+ExecStart=/var/www/autocare/backend/venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8008
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

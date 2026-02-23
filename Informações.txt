@@ -1,0 +1,13 @@
+Ajustes no modal Novo Cliente
+
+
+1 - Vamos reformular o inicio do cadastro de cliente que existe hoje, precisamos que assim que acionar o botão novo cliente, um primeiro modal aparecera para entrar com o CPF para verificar se o cliente nao existe, caso ele exista, mostre as informações do cliente, caso ele não exista mostre uma mensagem informando que ele nao existe e se deseja cadastrar, caso ele esteja inativo, pergunta se quer reativar o cliente
+2 - Criar um arquivo global para funções que vai servir para toda a aplicação
+3 - Criar uma função de validação de CPF e CNPJ e que possa ser reaproveitada em outras telas da aplicação. Aplicar esta validação em todo o frontend
+4 - Criar uma função de Busca de CEP automatico e que possa ser aproveitada em outras telas da aplicação. Aplicar a busca de CEP Automatica em todo o Frontend
+5 - Criar uma função para validação de numero de telefone, lembrando que o numero de telefone no Brasil e neste formato (00) 00000-0000 e tem lugares que o numero de telefone e (00) 0000-0000 ou seja, ate 11 numeros
+6 - Criar uma função para validação de e-mail e que possa ser aproveitada em outras telas da aplicação. Aplicar a busca de CEP Automatica em todo o Frontend
+7 - Para todas as validações, deve ser em validação inline com mensagem de erro.
+
+Prompts de analise:
+ - Preciso que seja analisado toda a aplicação de frontend e garanta que todos os imputs do frontend sao correspondentes ao backend e que sao correspondentes no banco de dados postgresql. Verifique tambem se os models existententes no backend, autocare_model_simple.py e autocare_model.py estao sendo utilizados pela aplicação e valide com todas as tabelas e colunas no banco de dados para saber se correspondem corretamente
