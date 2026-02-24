@@ -1379,7 +1379,6 @@ def atualizar_ordem_servico(
         ordem.valor_total = valores['valor_total']
         ordem.valor_mao_obra = ordem.valor_servico
         ordem.desconto = ordem.valor_desconto
-        logger.info(f"PUT /ordens/{ordem.id} - itens processados: {len(itens_da_ordem)}, valores recalculados: total={ordem.valor_total} pecas={ordem.valor_pecas} servico={ordem.valor_servico}")
     except Exception:
         # Se algo falhar na recalculação, registrar exceção
         logger.exception(f"Erro ao recalcular valores da ordem {ordem.id}")

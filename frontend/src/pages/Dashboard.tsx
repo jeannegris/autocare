@@ -59,6 +59,8 @@ interface DashboardStats {
   servicosRealizados: number;
   pecasVendidas: number;
   alertasEstoque: number;
+  custoPecas: number;
+  maoObraAvulsa: number;
   custoMensal: number;
   receitaLiquida: number;
 }
@@ -154,6 +156,8 @@ function useDashboardData(): { data: DashboardData | null, isLoading: boolean, e
       servicosRealizados: resumoQuery.data?.financeiro?.servicos_realizados || 0,
       pecasVendidas: resumoQuery.data?.financeiro?.pecas_vendidas || 0,
       alertasEstoque: resumoQuery.data?.contadores?.produtos_estoque_baixo || 0,
+      custoPecas: resumoQuery.data?.financeiro?.custo_pecas || 0,
+      maoObraAvulsa: resumoQuery.data?.financeiro?.mao_obra_avulsa || 0,
       custoMensal: resumoQuery.data?.financeiro?.custo_mensal || 0,
       receitaLiquida: resumoQuery.data?.financeiro?.receita_liquida || 0
     },
@@ -411,8 +415,15 @@ export default function Dashboard() {
                   <TrendingDown className="w-8 h-8 text-red-600" />
                 </div>
               </div>
-              <div className="mt-3 text-xs text-gray-600">
-                Descontos e custos
+              <div className="mt-4 space-y-2 text-xs text-gray-600 border-t pt-3">
+                <div className="flex justify-between">
+                  <span>Custo de Peças:</span>
+                  <span className="font-semibold text-gray-900">R$ {(stats.custoPecas != null ? stats.custoPecas : 0).toLocaleString('pt-BR')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Mão de Obra Avulsa:</span>
+                  <span className="font-semibold text-gray-900">R$ {(stats.maoObraAvulsa != null ? stats.maoObraAvulsa : 0).toLocaleString('pt-BR')}</span>
+                </div>
               </div>
             </div>
           </div>
