@@ -532,13 +532,13 @@ export default function ModalVisualizarOrdem({
                 <div className="border-t pt-2">
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
-                    <span className="text-green-600">R$ {(() => {
-                      const valorServico = parseFloat(String(ordem.valor_servico || 0));
-                      const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
-                      const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
-                      const totalCliente = valorServico + valorPecas - valorDesconto;
-                      return totalCliente.toFixed(2).replace('.', ',');
-                    })()}</span>
+                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>R$ {(() => {
+                  const valorServico = parseFloat(String(ordem.valor_servico || 0));
+                  const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
+                  const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
+                  const totalCliente = valorServico + valorPecas - valorDesconto;
+                  return totalCliente.toFixed(2).replace('.', ',');
+                })()}</span>
                   </div>
                 </div>
               </div>

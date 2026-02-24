@@ -118,7 +118,7 @@ export default function OrdensServicoNova() {
     tipo: 150,
     status: 180,
     data: 180,
-    valor_cobrado: 140,
+    valor_cliente: 140,
     valor_faturado: 140,
     acoes: 120
   });
@@ -251,7 +251,11 @@ export default function OrdensServicoNova() {
         valorA = new Date(a.data_abertura).getTime();
         valorB = new Date(b.data_abertura).getTime();
         break;
-      case 'valor':
+      case 'valor_cliente':
+        valorA = (parseFloat(String(a.valor_servico)) || 0) + (parseFloat(String(a.valor_pecas)) || 0) - (parseFloat(String(a.valor_desconto)) || 0);
+        valorB = (parseFloat(String(b.valor_servico)) || 0) + (parseFloat(String(b.valor_pecas)) || 0) - (parseFloat(String(b.valor_desconto)) || 0);
+        break;
+      case 'valor_faturado':
         valorA = parseFloat(String(a.valor_total)) || 0;
         valorB = parseFloat(String(b.valor_total)) || 0;
         break;
@@ -528,13 +532,13 @@ export default function OrdensServicoNova() {
               <DollarSign className="h-8 w-8 text-green-600" />
             </div>
             <div className="ml-4 flex-1">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Valor Cobrado:</span>
-                  <span className="text-lg font-bold text-blue-600">
+              <div className="space-y-4">
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">Valor Cobrado:</div>
+                  <div className="text-2xl font-bold text-blue-600">
                     R$ {(() => {
-                      const total = stats.ordens_mes
-                        ?.filter(o => o.status === 'CONCLUIDA')
+                      const total = ordensOrdenadas
+                        .filter(o => o.status === 'CONCLUIDA')
                         .reduce((sum, o) => {
                           const valorServico = parseFloat(String(o.valor_servico || 0));
                           const valorPecas = parseFloat(String(o.valor_pecas || 0));
@@ -544,13 +548,21 @@ export default function OrdensServicoNova() {
                         }, 0) || 0;
                       return total.toFixed(2).replace('.', ',');
                     })()}
-                  </span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Valor Faturado:</span>
-                  <span className="text-lg font-bold text-green-600">
-                    R$ {stats.valor_mes_atual.toFixed(2).replace('.', ',')}
-                  </span>
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">Valor Faturado:</div>
+                  <div className="text-2xl font-bold text-green-600">
+                    R$ {(() => {
+                      const total = ordensOrdenadas
+                        .filter(o => o.status === 'CONCLUIDA')
+                        .reduce((sum, o) => {
+                          const valorTotal = parseFloat(String(o.valor_total || 0));
+                          return sum + valorTotal;
+                        }, 0) || 0;
+                      return total.toFixed(2).replace('.', ',');
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>
@@ -830,16 +842,16 @@ export default function OrdensServicoNova() {
                     </div>
                   </th>
 
-                  {/* Coluna Valor Cobrado */}
+                  {/* Coluna Valor Cliente */}
                   <th 
                     className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative select-none group"
-                    style={{ width: `${columnWidths.valor_cobrado}px` }}
-                    onClick={() => handleSort('valor_cobrado')}
+                    style={{ width: `${columnWidths.valor_cliente}px` }}
+                    onClick={() => handleSort('valor_cliente')}
                   >
                     <div className="flex items-center justify-center">
                       <span className="flex items-center">
-                        Valor Cobrado
-                        {ordenacao.coluna === 'valor_cobrado' && (
+                        Valor Cliente
+                        {ordenacao.coluna === 'valor_cliente' && (
                           <span className="ml-1">
                             {ordenacao.direcao === 'asc' ? (
                               <ArrowUp className="h-3 w-3" />
@@ -848,13 +860,13 @@ export default function OrdensServicoNova() {
                             )}
                           </span>
                         )}
-                        {ordenacao.coluna !== 'valor_cobrado' && (
+                        {ordenacao.coluna !== 'valor_cliente' && (
                           <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />
                         )}
                       </span>
                       <div
                         className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize"
-                        onMouseDown={(e) => handleMouseDownResize(e, 'valor_cobrado')}
+                        onMouseDown={(e) => handleMouseDownResize(e, 'valor_cliente')}
                         onClick={(e) => e.stopPropagation()}
                         title="Arraste para redimensionar"
                       >
@@ -958,26 +970,20 @@ export default function OrdensServicoNova() {
                     </td>
                     
                     <td className="px-6 py-4 text-center">
-                      <div className="flex items-center">
-                        <DollarSign className="h-4 w-4 text-gray-400 mr-1" />
-                        <div className="text-sm font-medium text-blue-600">
-                          R$ {(() => {
-                            const valorServico = parseFloat(String(ordem.valor_servico || 0));
-                            const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
-                            const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
-                            const valorCobrado = valorServico + valorPecas - valorDesconto;
-                            return valorCobrado.toFixed(2).replace('.', ',');
-                          })()}
-                        </div>
+                      <div className="text-sm font-medium text-blue-600">
+                        R$ {(() => {
+                          const valorServico = parseFloat(String(ordem.valor_servico || 0));
+                          const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
+                          const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
+                          const valorCobrado = valorServico + valorPecas - valorDesconto;
+                          return valorCobrado.toFixed(2).replace('.', ',');
+                        })()}
                       </div>
                     </td>
 
                     <td className="px-6 py-4 text-center">
-                      <div className="flex items-center">
-                        <DollarSign className="h-4 w-4 text-gray-400 mr-1" />
-                        <div className="text-sm font-medium text-green-600">
-                          R$ {parseFloat(String(ordem.valor_total)).toFixed(2).replace('.', ',')}
-                        </div>
+                      <div className="text-sm font-medium text-green-600">
+                        R$ {parseFloat(String(ordem.valor_total)).toFixed(2).replace('.', ',')}
                       </div>
                     </td>
                     
