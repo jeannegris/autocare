@@ -356,18 +356,30 @@ fi
 if [ "$backend_started_systemd" = false ]; then
     cd "$PROJECT_DIR/backend"
     
-    # Verificar ambiente virtual
-    if [ ! -d "venv" ]; then
-        log "INFO" "Criando ambiente virtual..."
-        python3 -m venv venv
+    # Verificar se venv existe, se não criar
+    if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
+        log "INFO" "Criando ambiente virtual Python..."
+        python3 -m venv venv 2>/dev/null || {
+            log "ERROR" "Falha ao criar venv. Usando Python do sistema..."
+        }
     fi
     
-    # Ativar ambiente e verificar dependências
-    source venv/bin/activate
-    if [ -f "requirements.txt" ] && [ ! -f ".deps_installed" ]; then
-        log "INFO" "Instalando dependências Python..."
-        pip install -q -r requirements.txt
-        touch .deps_installed
+    # Ativar venv se foi criado com sucesso
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        log "INFO" "Ativando ambiente virtual..."
+        source venv/bin/activate
+        VENV_ACTIVATED=true
+    else
+        log "WARN" "Usando Python do sistema (venv não disponível)..."
+        VENV_ACTIVATED=false
+    fi
+    
+    # Verificar e instalar dependências
+    if [ -f "requirements.txt" ]; then
+        log "INFO" "Verificando dependências Python..."
+        python3 -m pip install -q -r requirements.txt 2>/dev/null || {
+            log "WARN" "Algumas dependências podem não ter sido instaladas corretamente"
+        }
     fi
     
     # Criar .env se necessário
@@ -396,7 +408,7 @@ ENVEOF
     fi
     
     # Iniciar uvicorn com redirecionamento robusto
-    nohup uvicorn server:app --host 0.0.0.0 --port $BACKEND_PORT >> "$LOG_FILE" 2>&1 &
+    nohup python3 -m uvicorn server:app --host 0.0.0.0 --port $BACKEND_PORT >> "$LOG_FILE" 2>&1 &
     BACKEND_PID=$!
     
     # Salvar PID (com fallback em caso de falta de permissão)
@@ -406,7 +418,10 @@ ENVEOF
         log "WARN" "Não foi possível gravar PID em $BACKEND_PID_FILE (continuando sem registro de PID)"
     fi
     
-    deactivate
+    # Deactivate somente se venv foi ativado
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        deactivate 2>/dev/null || true
+    fi
     cd "$ROOT_DIR"
     
     # Aguardar inicialização
