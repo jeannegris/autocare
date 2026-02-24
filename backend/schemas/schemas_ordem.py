@@ -141,6 +141,7 @@ class OrdemServicoNovaResponse(OrdemServicoNovaBase):
     valor_pecas: Decimal = Decimal('0.00')
     valor_subtotal: Decimal = Decimal('0.00')
     valor_desconto: Decimal = Decimal('0.00')
+    valor_mao_obra_avulso: Optional[Decimal] = None  # Pagamento de mão de obra avulsa
     valor_total: Decimal = Decimal('0.00')
     tempo_gasto_horas: Optional[Decimal] = None
     aprovado_cliente: bool = False

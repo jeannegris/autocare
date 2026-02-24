@@ -571,6 +571,7 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
         "descricao_servico": ordem.descricao_servico,
         "valor_servico": ordem.valor_servico,
         "percentual_desconto": ordem.percentual_desconto or Decimal('0'),  # Evitar None
+        "valor_mao_obra_avulso": ordem.valor_mao_obra_avulso or Decimal('0'),  # Adicionar campo
         "tipo_desconto": ordem.tipo_desconto or 'TOTAL',  # Evitar None
         "observacoes": ordem.observacoes,
         "funcionario_responsavel": ordem.funcionario_responsavel,
