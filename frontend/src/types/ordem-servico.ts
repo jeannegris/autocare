@@ -160,6 +160,7 @@ export interface OrdemServicoList {
   valor_servico?: number;
   valor_pecas?: number;
   valor_desconto?: number;
+  valor_custo_pecas?: number;
   valor_total: number;
 }
 

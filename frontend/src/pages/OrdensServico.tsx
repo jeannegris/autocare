@@ -558,7 +558,9 @@ export default function OrdensServicoNova() {
                         .filter(o => o.status === 'CONCLUIDA')
                         .reduce((sum, o) => {
                           const valorTotal = parseFloat(String(o.valor_total || 0));
-                          return sum + valorTotal;
+                          const valorCustoPecas = parseFloat(String(o.valor_custo_pecas || 0));
+                          const valorFaturado = valorTotal - valorCustoPecas;
+                          return sum + valorFaturado;
                         }, 0) || 0;
                       return total.toFixed(2).replace('.', ',');
                     })()}
@@ -983,7 +985,12 @@ export default function OrdensServicoNova() {
 
                     <td className="px-6 py-4 text-center">
                       <div className="text-sm font-medium text-green-600">
-                        R$ {parseFloat(String(ordem.valor_total)).toFixed(2).replace('.', ',')}
+                        R$ {(() => {
+                          const valorTotal = parseFloat(String(ordem.valor_total || 0));
+                          const valorCustoPecas = parseFloat(String(ordem.valor_custo_pecas || 0));
+                          const valorFaturado = valorTotal - valorCustoPecas;
+                          return valorFaturado.toFixed(2).replace('.', ',');
+                        })()}
                       </div>
                     </td>
                     
