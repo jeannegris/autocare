@@ -178,6 +178,9 @@ class OrdemServicoNovaList(BaseModel):
     tipo_ordem: str
     data_abertura: datetime
     status: str
+    valor_servico: Optional[Decimal] = None
+    valor_pecas: Optional[Decimal] = None
+    valor_desconto: Optional[Decimal] = None
     valor_total: Decimal = Decimal('0.00')
     
     class Config:

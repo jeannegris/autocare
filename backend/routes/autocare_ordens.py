@@ -482,6 +482,9 @@ def listar_ordens_servico(
             "tipo_ordem": ordem.tipo_ordem,
             "data_abertura": data_ordem_completa,  # Usar data_ordem com hora completa
             "status": ordem.status,
+            "valor_servico": ordem.valor_servico,
+            "valor_pecas": ordem.valor_pecas,
+            "valor_desconto": ordem.valor_desconto,
             "valor_total": ordem.valor_total
         }
         result.append(OrdemServicoNovaList(**ordem_dict))

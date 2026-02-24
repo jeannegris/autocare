@@ -157,6 +157,9 @@ export interface OrdemServicoList {
   tipo_ordem: string;
   data_abertura: string;
   status: string;
+  valor_servico?: number;
+  valor_pecas?: number;
+  valor_desconto?: number;
   valor_total: number;
 }
 
