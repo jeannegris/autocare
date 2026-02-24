@@ -117,6 +117,7 @@ export interface OrdemServicoNova {
   tempo_estimado_horas?: number;
   descricao_servico?: string;
   valor_servico: number;
+  valor_mao_obra_avulso?: number; // Novo campo
   percentual_desconto?: number;
   tipo_desconto: 'VENDA' | 'SERVICO' | 'TOTAL';
   observacoes?: string;
