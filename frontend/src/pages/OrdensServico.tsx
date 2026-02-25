@@ -531,31 +531,28 @@ export default function OrdensServicoNova() {
             <div className="flex-shrink-0">
               <DollarSign className="h-8 w-8 text-green-600" />
             </div>
-            <div className="ml-4 flex-1">
+            <div className="ml-4 flex-1 min-w-0">
               <div className="space-y-4">
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Valor Cobrado:</div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold text-blue-600">R$</span>
-                    <span className="text-2xl font-bold text-blue-600">
-                      {(() => {
-                        const total = ordensOrdenadas
-                          .filter(o => o.status === 'CONCLUIDA')
-                          .reduce((sum, o) => {
-                            const valorServico = parseFloat(String(o.valor_servico || 0));
-                            const valorPecas = parseFloat(String(o.valor_pecas || 0));
-                            const valorDesconto = parseFloat(String(o.valor_desconto || 0));
-                            const valorCobrado = valorServico + valorPecas - valorDesconto;
-                            return sum + valorCobrado;
-                          }, 0) || 0;
-                        return total.toFixed(2).replace('.', ',');
-                      })()}
-                    </span>
+                  <div className="text-2xl font-bold text-blue-600 whitespace-nowrap overflow-hidden text-ellipsis">
+                    R$ {(() => {
+                      const total = ordensOrdenadas
+                        .filter(o => o.status === 'CONCLUIDA')
+                        .reduce((sum, o) => {
+                          const valorServico = parseFloat(String(o.valor_servico || 0));
+                          const valorPecas = parseFloat(String(o.valor_pecas || 0));
+                          const valorDesconto = parseFloat(String(o.valor_desconto || 0));
+                          const valorCobrado = valorServico + valorPecas - valorDesconto;
+                          return sum + valorCobrado;
+                        }, 0) || 0;
+                      return total.toFixed(2).replace('.', ',');
+                    })()}
                   </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Valor Faturado:</div>
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-bold text-green-600 whitespace-nowrap overflow-hidden text-ellipsis">
                     R$ {(() => {
                       const total = ordensOrdenadas
                         .filter(o => o.status === 'CONCLUIDA')
