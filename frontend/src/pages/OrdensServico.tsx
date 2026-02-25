@@ -535,19 +535,22 @@ export default function OrdensServicoNova() {
               <div className="space-y-4">
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Valor Cobrado:</div>
-                  <div className="text-2xl font-bold text-blue-600">
-                    R$ {(() => {
-                      const total = ordensOrdenadas
-                        .filter(o => o.status === 'CONCLUIDA')
-                        .reduce((sum, o) => {
-                          const valorServico = parseFloat(String(o.valor_servico || 0));
-                          const valorPecas = parseFloat(String(o.valor_pecas || 0));
-                          const valorDesconto = parseFloat(String(o.valor_desconto || 0));
-                          const valorCobrado = valorServico + valorPecas - valorDesconto;
-                          return sum + valorCobrado;
-                        }, 0) || 0;
-                      return total.toFixed(2).replace('.', ',');
-                    })()}
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-blue-600">R$</span>
+                    <span className="text-2xl font-bold text-blue-600">
+                      {(() => {
+                        const total = ordensOrdenadas
+                          .filter(o => o.status === 'CONCLUIDA')
+                          .reduce((sum, o) => {
+                            const valorServico = parseFloat(String(o.valor_servico || 0));
+                            const valorPecas = parseFloat(String(o.valor_pecas || 0));
+                            const valorDesconto = parseFloat(String(o.valor_desconto || 0));
+                            const valorCobrado = valorServico + valorPecas - valorDesconto;
+                            return sum + valorCobrado;
+                          }, 0) || 0;
+                        return total.toFixed(2).replace('.', ',');
+                      })()}
+                    </span>
                   </div>
                 </div>
                 <div>
