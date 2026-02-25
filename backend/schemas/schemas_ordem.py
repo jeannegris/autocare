@@ -143,6 +143,8 @@ class OrdemServicoNovaResponse(OrdemServicoNovaBase):
     valor_desconto: Decimal = Decimal('0.00')
     valor_mao_obra_avulso: Optional[Decimal] = None  # Pagamento de mão de obra avulsa
     valor_total: Decimal = Decimal('0.00')
+    valor_custo_pecas: Decimal = Decimal('0.00')  # Custo real das peças
+    valor_faturado: Decimal = Decimal('0.00')  # Valor faturado (valor_total - custo_pecas - valor_mao_obra_avulso)
     tempo_gasto_horas: Optional[Decimal] = None
     aprovado_cliente: bool = False
     forma_pagamento: Optional[str] = None
@@ -182,6 +184,7 @@ class OrdemServicoNovaList(BaseModel):
     valor_pecas: Optional[Decimal] = None
     valor_desconto: Optional[Decimal] = None
     valor_total: Decimal = Decimal('0.00')
+    valor_faturado: Decimal = Decimal('0.00')  # Valor faturado (lucro líquido)
     
     class Config:
         from_attributes = True
