@@ -213,6 +213,8 @@ class OrdemServico(Base):
     percentual_desconto = Column(Numeric(5, 2), default=0)
     tipo_desconto = Column(String(20), default='TOTAL')
     valor_total = Column(Numeric(10, 2), default=0)
+    valor_custo_pecas = Column(Numeric(10, 2), default=0)  # Custo real das peças (para cálculo de valor_faturado)
+    valor_faturado = Column(Numeric(10, 2), default=0)  # Valor faturado = valor_total - custo_pecas - valor_mao_obra_avulso
     funcionario_responsavel = Column(String(255))
     # tempo_* podem não existir no esquema
     tempo_estimado_horas = Column(Numeric(5, 2))

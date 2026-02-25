@@ -485,7 +485,8 @@ def listar_ordens_servico(
             "valor_servico": ordem.valor_servico,
             "valor_pecas": ordem.valor_pecas,
             "valor_desconto": ordem.valor_desconto,
-            "valor_total": ordem.valor_total
+            "valor_total": ordem.valor_total,
+            "valor_faturado": ordem.valor_faturado or Decimal('0.00')  # Adicionar valor faturado
         }
         result.append(OrdemServicoNovaList(**ordem_dict))
     
@@ -585,6 +586,8 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
         "valor_subtotal": valor_subtotal_calculado,  # Usar valor calculado
         "valor_desconto": ordem.valor_desconto,
         "valor_total": ordem.valor_total,
+        "valor_custo_pecas": ordem.valor_custo_pecas or Decimal('0.00'),  # Custo real das peças
+        "valor_faturado": ordem.valor_faturado or Decimal('0.00'),  # Valor faturado (lucro líquido)
         "tempo_gasto_horas": ordem.tempo_gasto_horas or Decimal('0'),  # Evitar None
         "aprovado_cliente": ordem.aprovado_cliente,
         "forma_pagamento": ordem.forma_pagamento,
@@ -623,18 +626,40 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
     
     return OrdemServicoNovaResponse(**response_data)
 
-def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem]) -> dict:
-    """Calcular valores da ordem de serviço"""
-    valor_pecas = Decimal('0.00')
+def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem], movimentos_estoque: List[MovimentoEstoque] = None) -> dict:
+    """Calcular valores da ordem de serviço
+    
+    Valor Total (cobrado ao cliente) = Valor Serviço + Valor Venda Peças - Desconto
+    Valor Faturado (lucro líquido) = Valor Total - Valor Custo Peças - Valor Mão de Obra Avulsa
+    
+    Args:
+        ordem_data: Dicionário com valor_servico, percentual_desconto, tipo_desconto, valor_mao_obra_avulso
+        itens: Lista de itens da ordem
+        movimentos_estoque: Lista de movimentos de estoque para calcular custo real das peças
+    """
+    valor_venda_pecas = Decimal('0.00')  # Valor de VENDA das peças (cobrado do cliente)
+    valor_custo_pecas = Decimal('0.00')  # Valor de CUSTO das peças (o que foi pago ao fornecedor)
     valor_servico = ordem_data.get('valor_servico', Decimal('0.00'))
     
-    # Somar valores dos itens
+    # Somar valores dos itens (valor de venda) e buscar custo real das peças
     for item in itens:
         if item.tipo == "PRODUTO":
-            valor_pecas += item.valor_total
+            valor_venda_pecas += item.valor_total
+            # Se há movimentos de estoque, buscar o custo real
+            if movimentos_estoque:
+                for movimento in movimentos_estoque:
+                    if (movimento.item_id == item.produto_id and 
+                        movimento.tipo == "SAIDA" and 
+                        movimento.ordem_servico_id is not None):
+                        # Usar preco_custo do movimento se disponível (custo FIFO)
+                        if movimento.preco_custo:
+                            valor_custo_pecas += Decimal(str(movimento.preco_custo)) * Decimal(str(movimento.quantidade))
+                        else:
+                            # Fallback: usar preco_unitario se preco_custo não está disponível
+                            valor_custo_pecas += Decimal(str(movimento.preco_unitario or 0)) * Decimal(str(movimento.quantidade or 0))
     
-    # Calcular subtotal
-    valor_subtotal = valor_pecas + valor_servico
+    # Calcular subtotal (para cálculo de desconto)
+    valor_subtotal = valor_venda_pecas + valor_servico
     
     # Calcular desconto
     percentual_desconto = ordem_data.get('percentual_desconto', Decimal('0.00'))
@@ -643,26 +668,32 @@ def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem]) -> dict:
     valor_desconto = Decimal('0.00')
     if percentual_desconto > 0:
         if tipo_desconto == 'VENDA':
-            valor_desconto = (valor_pecas * percentual_desconto) / 100
+            valor_desconto = (valor_venda_pecas * percentual_desconto) / 100
         elif tipo_desconto == 'SERVICO':
             valor_desconto = (valor_servico * percentual_desconto) / 100
         else:  # TOTAL
             valor_desconto = (valor_subtotal * percentual_desconto) / 100
     
-    # Mão de obra avulso (subtraído do total)
+    # Mão de obra avulso (não influencia valor_total, apenas valor_faturado)
     valor_mao_obra_avulso = ordem_data.get('valor_mao_obra_avulso', Decimal('0.00'))
     if valor_mao_obra_avulso is None:
         valor_mao_obra_avulso = Decimal('0.00')
     
-    valor_total = valor_subtotal - valor_desconto - valor_mao_obra_avulso
+    # VALOR TOTAL (cobrado ao cliente) = Valor Serviço + Valor Venda Peças - Desconto
+    valor_total = valor_servico + valor_venda_pecas - valor_desconto
+    
+    # VALOR FATURADO (lucro líquido da loja) = Valor Total - Valor Custo Peças - Valor Mão de Obra Avulsa
+    valor_faturado = valor_total - valor_custo_pecas - valor_mao_obra_avulso
     
     return {
-        'valor_pecas': valor_pecas,
+        'valor_pecas': valor_venda_pecas,  # Valor de VENDA das peças
         'valor_servico': valor_servico,
         'valor_subtotal': valor_subtotal,
         'valor_desconto': valor_desconto,
         'valor_mao_obra_avulso': valor_mao_obra_avulso,
-        'valor_total': valor_total
+        'valor_total': valor_total,  # Cobrado ao cliente
+        'valor_custo_pecas': valor_custo_pecas,  # Custo real das peças
+        'valor_faturado': valor_faturado  # Lucro líquido
     }
 
 @router.post("/", response_model=OrdemServicoNovaResponse, status_code=status.HTTP_201_CREATED)
@@ -798,6 +829,8 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         ordem.valor_desconto = valores['valor_desconto']
         ordem.valor_mao_obra_avulso = valores['valor_mao_obra_avulso']
         ordem.valor_total = valores['valor_total']
+        ordem.valor_custo_pecas = valores['valor_custo_pecas']
+        ordem.valor_faturado = valores['valor_faturado']
         
         # Campos de compatibilidade
         ordem.valor_mao_obra = ordem.valor_servico
@@ -1367,13 +1400,17 @@ def atualizar_ordem_servico(
     # Recalcular valores da ordem com itens atualizados
     try:
         itens_da_ordem = db.query(ItemOrdem).filter(ItemOrdem.ordem_id == ordem.id).all()
+        # Buscar movimentos de estoque da ordem para calcular custo real
+        movimentos_da_ordem = db.query(MovimentoEstoque).filter(
+            MovimentoEstoque.ordem_servico_id == ordem.id
+        ).all()
         ordem_dict = {
             'valor_servico': ordem.valor_servico or Decimal('0.00'),
             'percentual_desconto': ordem.percentual_desconto or Decimal('0.00'),
             'tipo_desconto': ordem.tipo_desconto or 'TOTAL',
             'valor_mao_obra_avulso': ordem.valor_mao_obra_avulso or Decimal('0.00')
         }
-        valores = calcular_valores_ordem(ordem_dict, itens_da_ordem)
+        valores = calcular_valores_ordem(ordem_dict, itens_da_ordem, movimentos_da_ordem)
 
         ordem.valor_pecas = valores['valor_pecas']
         ordem.valor_servico = valores['valor_servico']
@@ -1381,6 +1418,8 @@ def atualizar_ordem_servico(
         ordem.valor_desconto = valores['valor_desconto']
         ordem.valor_mao_obra_avulso = valores['valor_mao_obra_avulso']
         ordem.valor_total = valores['valor_total']
+        ordem.valor_custo_pecas = valores['valor_custo_pecas']
+        ordem.valor_faturado = valores['valor_faturado']
         ordem.valor_mao_obra = ordem.valor_servico
         ordem.desconto = ordem.valor_desconto
     except Exception:

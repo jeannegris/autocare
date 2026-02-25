@@ -256,8 +256,8 @@ export default function OrdensServicoNova() {
         valorB = (parseFloat(String(b.valor_servico)) || 0) + (parseFloat(String(b.valor_pecas)) || 0) - (parseFloat(String(b.valor_desconto)) || 0);
         break;
       case 'valor_faturado':
-        valorA = parseFloat(String(a.valor_total)) || 0;
-        valorB = parseFloat(String(b.valor_total)) || 0;
+        valorA = parseFloat(String(a.valor_faturado)) || 0;
+        valorB = parseFloat(String(b.valor_faturado)) || 0;
         break;
       default:
         return 0;
@@ -284,12 +284,9 @@ export default function OrdensServicoNova() {
     valor_mes_atual: ordensOrdenadas
       .filter((o: OrdemServicoList) => o.status === 'CONCLUIDA')
       .reduce((sum: number, o: OrdemServicoList) => {
-        // Valor Cobrado = valor_servico + valor_pecas - desconto
-        const valorCobrado = (parseFloat(String(o.valor_servico)) || 0) + (parseFloat(String(o.valor_pecas)) || 0) - (parseFloat(String(o.valor_desconto)) || 0);
-        // Valor Faturado = valor_total (já considerando a subtração da mão de obra avulsa)
-        const valorFaturado = parseFloat(String(o.valor_total)) || 0;
-        // Total = Valor Cobrado + Valor Faturado
-        return sum + valorCobrado + valorFaturado;
+        // Valor Faturado = Valor do serviço + Valor de custo das peças - desconto - valor de mão de obra avulsa
+        const valorFaturado = parseFloat(String(o.valor_faturado)) || 0;
+        return sum + valorFaturado;
       }, 0)
   };
 
@@ -531,11 +528,11 @@ export default function OrdensServicoNova() {
             <div className="flex-shrink-0">
               <DollarSign className="h-8 w-8 text-green-600" />
             </div>
-            <div className="ml-4 flex-1 min-w-0">
+            <div className="ml-4 flex-1">
               <div className="space-y-4">
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Valor Cobrado:</div>
-                  <div className="text-2xl font-bold text-blue-600 whitespace-nowrap overflow-hidden text-ellipsis">
+                  <div className="text-2xl font-bold text-blue-600">
                     R$ {(() => {
                       const total = ordensOrdenadas
                         .filter(o => o.status === 'CONCLUIDA')
@@ -552,14 +549,12 @@ export default function OrdensServicoNova() {
                 </div>
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Valor Faturado:</div>
-                  <div className="text-2xl font-bold text-green-600 whitespace-nowrap overflow-hidden text-ellipsis">
+                  <div className="text-2xl font-bold text-green-600">
                     R$ {(() => {
                       const total = ordensOrdenadas
                         .filter(o => o.status === 'CONCLUIDA')
                         .reduce((sum, o) => {
-                          const valorTotal = parseFloat(String(o.valor_total || 0));
-                          const valorCustoPecas = parseFloat(String(o.valor_custo_pecas || 0));
-                          const valorFaturado = valorTotal - valorCustoPecas;
+                          const valorFaturado = parseFloat(String(o.valor_faturado || 0));
                           return sum + valorFaturado;
                         }, 0) || 0;
                       return total.toFixed(2).replace('.', ',');
@@ -985,12 +980,7 @@ export default function OrdensServicoNova() {
 
                     <td className="px-6 py-4 text-center">
                       <div className="text-sm font-medium text-green-600">
-                        R$ {(() => {
-                          const valorTotal = parseFloat(String(ordem.valor_total || 0));
-                          const valorCustoPecas = parseFloat(String(ordem.valor_custo_pecas || 0));
-                          const valorFaturado = valorTotal - valorCustoPecas;
-                          return valorFaturado.toFixed(2).replace('.', ',');
-                        })()}
+                        R$ {parseFloat(String(ordem.valor_faturado || 0)).toFixed(2).replace('.', ',')}
                       </div>
                     </td>
                     
