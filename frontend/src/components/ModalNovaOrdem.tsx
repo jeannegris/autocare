@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { X, Trash2, Calculator, Save, User, Car, Calendar, Clock, FileText, AlertTriangle } from 'lucide-react';
 import { OrdemServicoNova, ItemOrdemNova, ProdutoAutocomplete, ClienteBuscaResponse, ProdutoComLotes, LoteDisponivel } from '../types/ordem-servico';
 import AutocompleteProduto from './AutocompleteProduto';

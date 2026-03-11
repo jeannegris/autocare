@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+﻿from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from db import get_db
-from models.autocare_models import Configuracao, Produto, Usuario
+from models.autocare_models import Configuracao, Produto, Usuario, TaxaPagamento, Maquina
 import hashlib
 import os
 import sys
@@ -25,6 +25,8 @@ security = HTTPBearer(auto_error=False)
 
 # Schema Pydantic
 from pydantic import BaseModel, Field, validator
+from schemas.schemas_taxa_pagamento import TaxaPagamentoCreate, TaxaPagamentoUpdate, TaxaPagamentoResponse, TaxaPagamentoListResponse
+from schemas.schemas_maquina import MaquinaCreate, MaquinaUpdate, MaquinaResponse, MaquinaListResponse
 
 class ConfiguracaoBase(BaseModel):
     chave: str
@@ -934,6 +936,250 @@ def verificar_servicos_com_logs():
             logs="",
             mensagem=f"Erro ao executar script: {str(e)}"
         )
+
+
+# ====== ENDPOINTS DE TAXAS DE PAGAMENTO ======
+
+@router.get("/taxas-pagamento", response_model=List[TaxaPagamentoListResponse])
+def listar_taxas_pagamento(db: Session = Depends(get_db)):
+    """Lista todas as taxas de pagamento configuradas"""
+    # Garantir que as taxas padrão existam
+    taxas_padrao = {
+        'DINHEIRO': Decimal('0.00'),
+        'PIX': Decimal('0.50'),
+        'DEBITO': Decimal('2.60'),
+        'CREDITO': Decimal('3.20')
+    }
+    
+    for tipo, taxa in taxas_padrao.items():
+        taxa_existente = db.query(TaxaPagamento).filter(
+            TaxaPagamento.tipo_pagamento == tipo
+        ).first()
+        
+        if not taxa_existente:
+            nova_taxa = TaxaPagamento(
+                tipo_pagamento=tipo,
+                percentual_taxa=taxa,
+                descricao=f"Taxa para pagamento em {tipo}",
+                ativo=True
+            )
+            db.add(nova_taxa)
+    
+    db.commit()
+    
+    # Retornar todas as taxas
+    taxas = db.query(TaxaPagamento).order_by(TaxaPagamento.tipo_pagamento).all()
+    return taxas
+
+
+@router.get("/taxas-pagamento/{taxa_id}", response_model=TaxaPagamentoResponse)
+def obter_taxa_pagamento(taxa_id: int, db: Session = Depends(get_db)):
+    """Obtém uma taxa de pagamento específica"""
+    taxa = db.query(TaxaPagamento).filter(TaxaPagamento.id == taxa_id).first()
+    if not taxa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Taxa de pagamento não encontrada"
+        )
+    return taxa
+
+
+@router.post("/taxas-pagamento", response_model=TaxaPagamentoResponse)
+def criar_taxa_pagamento(taxa_data: TaxaPagamentoCreate, db: Session = Depends(get_db)):
+    """Criar uma nova taxa de pagamento"""
+    # Verificar se já existe taxa para este tipo de pagamento
+    taxa_existente = db.query(TaxaPagamento).filter(
+        TaxaPagamento.tipo_pagamento == taxa_data.tipo_pagamento
+    ).first()
+    
+    if taxa_existente:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Já existe uma taxa configurada para {taxa_data.tipo_pagamento}"
+        )
+    
+    nova_taxa = TaxaPagamento(**taxa_data.dict())
+    db.add(nova_taxa)
+    db.commit()
+    db.refresh(nova_taxa)
+    return nova_taxa
+
+
+@router.put("/taxas-pagamento/{taxa_id}", response_model=TaxaPagamentoResponse)
+def atualizar_taxa_pagamento(
+    taxa_id: int,
+    taxa_data: TaxaPagamentoUpdate,
+    db: Session = Depends(get_db)
+):
+    """Atualizar uma taxa de pagamento existente"""
+    taxa = db.query(TaxaPagamento).filter(TaxaPagamento.id == taxa_id).first()
+    if not taxa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Taxa de pagamento não encontrada"
+        )
+    
+    # Atualizar apenas os campos fornecidos
+    update_data = taxa_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(taxa, key, value)
+    
+    taxa.updated_at = datetime.now()
+    db.commit()
+    db.refresh(taxa)
+    return taxa
+
+
+@router.delete("/taxas-pagamento/{taxa_id}")
+def deletar_taxa_pagamento(taxa_id: int, db: Session = Depends(get_db)):
+    """Deletar uma taxa de pagamento"""
+    taxa = db.query(TaxaPagamento).filter(TaxaPagamento.id == taxa_id).first()
+    if not taxa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Taxa de pagamento não encontrada"
+        )
+    
+    db.delete(taxa)
+    db.commit()
+    return {"message": "Taxa de pagamento deletada com sucesso"}
+
+
+@router.get("/taxas-pagamento/tipo/{tipo_pagamento}", response_model=TaxaPagamentoResponse)
+def obter_taxa_por_tipo(tipo_pagamento: str, db: Session = Depends(get_db)):
+    """Obtém a taxa de pagamento para um tipo específico"""
+    taxa = db.query(TaxaPagamento).filter(
+        TaxaPagamento.tipo_pagamento == tipo_pagamento.upper()
+    ).first()
+    
+    if not taxa:
+        # Se não existir, retornar taxa padrão de 0%
+        taxa = TaxaPagamento(
+            tipo_pagamento=tipo_pagamento.upper(),
+            percentual_taxa=Decimal('0.00')
+        )
+    
+    return taxa
+
+
+# ====== ENDPOINTS DE MÁQUINAS ======
+
+@router.get("/maquinas", response_model=List[MaquinaListResponse])
+def listar_maquinas(db: Session = Depends(get_db)):
+    """Lista todas as máquinas cadastradas"""
+    maquinas = db.query(Maquina).order_by(Maquina.nome).all()
+    return maquinas
+
+
+@router.post("/maquinas", response_model=MaquinaResponse)
+def criar_maquina(maquina_data: MaquinaCreate, db: Session = Depends(get_db)):
+    """Criar uma nova máquina"""
+    # Verificar se já existe máquina com este nome
+    maquina_existente = db.query(Maquina).filter(Maquina.nome == maquina_data.nome).first()
+    if maquina_existente:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Já existe uma máquina com o nome '{maquina_data.nome}'"
+        )
+    
+    # Se for default, remover flag de outras máquinas
+    if maquina_data.eh_default:
+        db.query(Maquina).update({Maquina.eh_default: False})
+    
+    nova_maquina = Maquina(**maquina_data.dict())
+    db.add(nova_maquina)
+    db.commit()
+    db.refresh(nova_maquina)
+    return nova_maquina
+
+
+@router.get("/maquinas/{maquina_id}", response_model=MaquinaResponse)
+def obter_maquina(maquina_id: int, db: Session = Depends(get_db)):
+    """Obtém uma máquina específica"""
+    maquina = db.query(Maquina).filter(Maquina.id == maquina_id).first()
+    if not maquina:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Máquina não encontrada"
+        )
+    return maquina
+
+
+@router.put("/maquinas/{maquina_id}", response_model=MaquinaResponse)
+def atualizar_maquina(
+    maquina_id: int,
+    maquina_data: MaquinaUpdate,
+    db: Session = Depends(get_db)
+):
+    """Atualizar uma máquina existente"""
+    maquina = db.query(Maquina).filter(Maquina.id == maquina_id).first()
+    if not maquina:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Máquina não encontrada"
+        )
+    
+    # Validar unicidade do nome
+    if maquina_data.nome and maquina_data.nome != maquina.nome:
+        existente = db.query(Maquina).filter(Maquina.nome == maquina_data.nome).first()
+        if existente:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Já existe uma máquina com o nome '{maquina_data.nome}'"
+            )
+    
+    # Se está definindo como default, remover de outras
+    if maquina_data.eh_default:
+        db.query(Maquina).filter(Maquina.id != maquina_id).update({Maquina.eh_default: False})
+    
+    # Atualizar apenas os campos fornecidos
+    update_data = maquina_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(maquina, key, value)
+    
+    maquina.updated_at = datetime.now()
+    db.commit()
+    db.refresh(maquina)
+    return maquina
+
+
+@router.delete("/maquinas/{maquina_id}")
+def deletar_maquina(maquina_id: int, db: Session = Depends(get_db)):
+    """Deletar uma máquina"""
+    maquina = db.query(Maquina).filter(Maquina.id == maquina_id).first()
+    if not maquina:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Máquina não encontrada"
+        )
+    
+    # Não permitir deletar se for a última máquina
+    total_maquinas = db.query(Maquina).count()
+    if total_maquinas <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível deletar a última máquina do sistema"
+        )
+    
+    # Se era default, definir outra como default
+    if maquina.eh_default:
+        outra_maquina = db.query(Maquina).filter(Maquina.id != maquina_id).first()
+        if outra_maquina:
+            outra_maquina.eh_default = True
+    
+    db.delete(maquina)
+    db.commit()
+    return {"message": "Máquina deletada com sucesso"}
+
+
+@router.get("/maquinas/default/obter", response_model=MaquinaResponse)
+def obter_maquina_default(db: Session = Depends(get_db)):
+    """Obtém a máquina padrão"""
+    maquina = db.query(Maquina).filter(Maquina.eh_default == True).first()
+    if not maquina:
+        # Se não houver default, retornar a primeira
+        maquina = db.query(Maquina).order_by(Maquina.id).first()
+    return maquina
 
 
 # Aliases legados para compatibilidade

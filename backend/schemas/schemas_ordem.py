@@ -77,6 +77,9 @@ class OrdemServicoNovaBase(BaseModel):
     tipo_desconto: str = "TOTAL"  # VENDA, SERVICO, TOTAL
     observacoes: Optional[str] = None
     funcionario_responsavel: Optional[str] = None
+    # Campos de pagamento
+    forma_pagamento: Optional[str] = None  # DINHEIRO, PIX, DEBITO, CREDITO
+    numero_parcelas: int = 1  # Número de parcelas (apenas para CREDITO)
     # Lista de itens
     itens: List[ItemOrdemNovaCreate] = []
 
@@ -129,6 +132,8 @@ class OrdemServicoNovaUpdate(BaseModel):
     tempo_gasto_horas: Optional[Decimal] = None
     aprovado_cliente: Optional[bool] = None
     forma_pagamento: Optional[str] = None
+    numero_parcelas: Optional[int] = None  # Número de parcelas
+    maquina_id: Optional[int] = None  # ID da máquina para taxa (opcional, usa default se não fornecido)
     motivo_cancelamento: Optional[str] = None  # Motivo do cancelamento (obrigatório quando status = CANCELADA)
     itens: Optional[List[ItemOrdemNovaUpdate]] = None
 
@@ -148,6 +153,8 @@ class OrdemServicoNovaResponse(OrdemServicoNovaBase):
     tempo_gasto_horas: Optional[Decimal] = None
     aprovado_cliente: bool = False
     forma_pagamento: Optional[str] = None
+    numero_parcelas: int = 1  # Número de parcelas
+    taxa_pagamento_aplicada: Decimal = Decimal('0.00')  # Valor da taxa aplicada
     motivo_cancelamento: Optional[str] = None  # Motivo do cancelamento (quando status = CANCELADA)
     created_at: datetime
     updated_at: Optional[datetime] = None

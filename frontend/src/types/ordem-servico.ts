@@ -122,6 +122,8 @@ export interface OrdemServicoNova {
   tipo_desconto: 'VENDA' | 'SERVICO' | 'TOTAL';
   observacoes?: string;
   funcionario_responsavel?: string;
+  forma_pagamento?: string; // Novo campo
+  numero_parcelas?: number; // Novo campo
   itens: ItemOrdemNova[];
   // Campos de resposta
   status?: string;
@@ -131,9 +133,11 @@ export interface OrdemServicoNova {
   valor_subtotal?: number;
   valor_desconto?: number;
   valor_total?: number;
+  valor_custo_pecas?: number;
+  valor_faturado?: number;
   tempo_gasto_horas?: number;
   aprovado_cliente?: boolean;
-  forma_pagamento?: string;
+  taxa_pagamento_aplicada?: number;
   motivo_cancelamento?: string;  // Motivo do cancelamento (obrigatório quando status = CANCELADA)
   created_at?: string;
   updated_at?: string;
@@ -161,7 +165,12 @@ export interface OrdemServicoList {
   valor_pecas?: number;
   valor_desconto?: number;
   valor_total: number;
+  valor_custo_pecas?: number;
+  valor_mao_obra_avulso?: number;
   valor_faturado?: number;
+  forma_pagamento?: string;
+  numero_parcelas?: number;
+  taxa_pagamento_aplicada?: number;
 }
 
 // Tipos para formulários

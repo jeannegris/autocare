@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { X, User, Car, FileText, DollarSign, Package, Wrench, Printer } from 'lucide-react';
 import { OrdemServicoNova } from '../types/ordem-servico';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ModalCancelamento from './ModalCancelamento';
+import ModalFormaPagamento from './ModalFormaPagamento';
 
 interface ModalVisualizarOrdemProps {
   isOpen: boolean;
   onClose: () => void;
   ordem: OrdemServicoNova | null;
-  onChangeStatus?: (novoStatus: string, motivoCancelamento?: string) => void;
+  onChangeStatus?: (novoStatus: string, motivoCancelamento?: string, statusData?: any) => void;
 }
 
 const STATUS_OPTIONS = [
@@ -35,6 +36,7 @@ export default function ModalVisualizarOrdem({
 }: ModalVisualizarOrdemProps) {
   const [novoStatus, setNovoStatus] = useState(ordem?.status || '');
   const [modalCancelamentoAberto, setModalCancelamentoAberto] = useState(false);
+  const [modalFormaPagamentoAberto, setModalFormaPagamentoAberto] = useState(false);
 
   // Sincronizar novoStatus quando a ordem for atualizada
   useEffect(() => {
@@ -66,8 +68,37 @@ export default function ModalVisualizarOrdem({
       return;
     }
 
+    // Se o novo status for CONCLUIDA, abrir modal de forma de pagamento
+    if (novoStatus === 'CONCLUIDA') {
+      setModalFormaPagamentoAberto(true);
+      return;
+    }
+
     // Para outros status, atualizar diretamente
     onChangeStatus(novoStatus);
+  };
+
+  const handleConfirmarFormaPagamento = (formaPagamento: string, numeroParcelas: number, maquinaId?: number) => {
+    if (onChangeStatus) {
+      // Passar forma de pagamento, número de parcelas e máquina como dados adicionais
+      const statusData: any = { 
+        status: 'CONCLUIDA',
+        forma_pagamento: formaPagamento,
+        numero_parcelas: numeroParcelas
+      };
+      // Adicionar maquina_id se foi selecionada
+      if (maquinaId) {
+        statusData.maquina_id = maquinaId;
+      }
+      onChangeStatus('CONCLUIDA', undefined, statusData);
+    }
+    setModalFormaPagamentoAberto(false);
+  };
+
+  const handleFecharModalFormaPagamento = () => {
+    // Reverter o select para o status anterior
+    setNovoStatus(ordem?.status || '');
+    setModalFormaPagamentoAberto(false);
   };
 
   const handleConfirmarCancelamento = (motivo: string) => {
@@ -94,6 +125,14 @@ export default function ModalVisualizarOrdem({
         onClose={handleFecharModalCancelamento}
         onConfirm={handleConfirmarCancelamento}
         ordemNumero={ordem?.numero}
+      />
+      
+      <ModalFormaPagamento
+        isOpen={modalFormaPagamentoAberto}
+        onClose={handleFecharModalFormaPagamento}
+        onConfirm={handleConfirmarFormaPagamento}
+        ordemNumero={ordem?.numero}
+        valorTotal={parseFloat(String(ordem?.valor_total || 0))}
       />
 
       {/* Layout de Impressão - Visível apenas ao imprimir */}

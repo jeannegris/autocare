@@ -1,2 +1,16 @@
+ M backend/models/autocare_models.py
+ M backend/routes/autocare_configuracoes.py
+ M backend/routes/autocare_ordens.py
+ M backend/schemas/schemas_ordem.py
  M backup_log.txt
  M changes.txt
+ M frontend/src/components/ModalNovaOrdem.tsx
+ M frontend/src/components/ModalVisualizarOrdem.tsx
+ M frontend/src/pages/Configuracoes.tsx
+ M frontend/src/pages/OrdensServico.tsx
+ M frontend/src/types/ordem-servico.ts
+?? backend/alembic/versions/add_maquinas_table.py
+?? backend/alembic/versions/add_payment_methods_and_taxes.py
+?? backend/schemas/schemas_maquina.py
+?? backend/schemas/schemas_taxa_pagamento.py
+?? frontend/src/components/ModalFormaPagamento.tsx

@@ -7,7 +7,7 @@ from datetime import datetime, date
 import pytz
 import logging
 from db import get_db
-from models.autocare_models import OrdemServico, ItemOrdem, Cliente, Veiculo, Produto, MovimentoEstoque, LoteEstoque, ManutencaoHistorico
+from models.autocare_models import OrdemServico, ItemOrdem, Cliente, Veiculo, Produto, MovimentoEstoque, LoteEstoque, ManutencaoHistorico, TaxaPagamento, Maquina
 from schemas.schemas_ordem import (
     OrdemServicoNovaCreate,
     OrdemServicoNovaUpdate,
@@ -41,6 +41,84 @@ def gerar_numero_ordem(db: Session) -> str:
         proximo = 1
     
     return str(proximo).zfill(8)
+
+def obter_taxa_pagamento(db: Session, tipo_pagamento: Optional[str], maquina_id: Optional[int] = None) -> Decimal:
+    """Obter a taxa de pagamento para um tipo específico de uma máquina"""
+    if not tipo_pagamento:
+        return Decimal('0.00')
+    
+    tipo_pagamento_upper = tipo_pagamento.upper()
+    
+    # Se tiver máquina específica, usar suas taxas
+    if maquina_id:
+        maquina = db.query(Maquina).filter(Maquina.id == maquina_id).first()
+        if maquina:
+            if tipo_pagamento_upper == 'DINHEIRO':
+                return maquina.taxa_dinheiro
+            elif tipo_pagamento_upper == 'PIX':
+                return maquina.taxa_pix
+            elif tipo_pagamento_upper == 'DEBITO':
+                return maquina.taxa_debito
+            elif tipo_pagamento_upper == 'CREDITO':
+                return maquina.taxa_credito
+    
+    # Se não tiver máquina, usar a máquina padrão
+    maquina_default = db.query(Maquina).filter(Maquina.eh_default == True).first()
+    if maquina_default:
+        if tipo_pagamento_upper == 'DINHEIRO':
+            return maquina_default.taxa_dinheiro
+        elif tipo_pagamento_upper == 'PIX':
+            return maquina_default.taxa_pix
+        elif tipo_pagamento_upper == 'DEBITO':
+            return maquina_default.taxa_debito
+        elif tipo_pagamento_upper == 'CREDITO':
+            return maquina_default.taxa_credito
+    
+    return Decimal('0.00')
+
+def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optional[int] = None) -> Decimal:
+    """
+    Aplica a taxa de pagamento ao valor faturado da ordem
+    
+    Args:
+        db: Sessao do banco
+        ordem: Ordem de servico
+        maquina_id: ID da máquina (opcional, usa default se não fornecido)
+        
+    Returns:
+        Valor da taxa aplicada
+    """
+    if ordem.status != "CONCLUIDA" or not ordem.forma_pagamento:
+        return Decimal('0.00')
+    
+    # Se não forneceu máquina, usar a padrão
+    if not maquina_id:
+        maquina_default = db.query(Maquina).filter(Maquina.eh_default == True).first()
+        if maquina_default:
+            maquina_id = maquina_default.id
+    
+    # Obter taxa para este tipo de pagamento e máquina
+    percentual_taxa = obter_taxa_pagamento(db, ordem.forma_pagamento, maquina_id)
+    
+    if percentual_taxa <= 0:
+        ordem.taxa_pagamento_aplicada = Decimal('0.00')
+        ordem.maquina_id = maquina_id
+        return Decimal('0.00')
+    
+    # Calcular valor da taxa sobre o valor total
+    valor_base = Decimal(str(ordem.valor_total or 0))
+    taxa_valor = valor_base * (percentual_taxa / Decimal('100'))
+    
+    # Arredondar para 2 casas decimais
+    taxa_valor = taxa_valor.quantize(Decimal('0.01'))
+    
+    # Aplicar taxa ao valor faturado
+    ordem.taxa_pagamento_aplicada = taxa_valor
+    ordem.maquina_id = maquina_id
+    
+    logger.info(f"Taxa de pagamento ({percentual_taxa}%) aplicada para OS {ordem.numero}: {ordem.forma_pagamento} - R${taxa_valor:.2f}")
+    
+    return taxa_valor
 
 def consumir_lotes_fifo(db: Session, produto_id: int, quantidade_saida) -> float:
     """
@@ -1262,6 +1340,9 @@ def atualizar_ordem_servico(
         # Para CONCLUIDA, atualizar data de conclus??o
         if novo_status == "CONCLUIDA":
             ordem.data_conclusao = datetime.now()
+            # Aplicar taxa de pagamento baseada na forma de pagamento e máquina selecionada
+            maquina_id = update_data.get('maquina_id')
+            aplicar_taxa_pagamento(db, ordem, maquina_id)
             # Criar registro no hist??rico de manuten????es do ve??culo
             try:
                 criar_historico_manutencao(ordem, db)
@@ -1588,3 +1669,4 @@ def cancelar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Ordem de servi??o cancelada com sucesso"}
+

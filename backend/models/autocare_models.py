@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Numeric, Date, Float
+﻿from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Numeric, Date, Float
 from sqlalchemy.orm import relationship, foreign, synonym
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -220,7 +220,10 @@ class OrdemServico(Base):
     tempo_estimado_horas = Column(Numeric(5, 2))
     tempo_gasto_horas = Column(Numeric(5, 2))
     aprovado_cliente = Column(Boolean, default=False)
-    forma_pagamento = Column(String(50))
+    forma_pagamento = Column(String(50))  # DINHEIRO, PIX, DEBITO, CREDITO
+    numero_parcelas = Column(Integer, default=1)  # Número de parcelas (apenas para CREDITO)
+    taxa_pagamento_aplicada = Column(Numeric(10, 2), default=0)  # Valor da taxa já aplicada
+    maquina_id = Column(Integer, ForeignKey("maquinas.id"), nullable=True)  # Máquina utilizada para a taxa
     motivo_cancelamento = Column(Text)  # Motivo do cancelamento (quando status = CANCELADA)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -484,3 +487,30 @@ class ItemCompraFornecedor(Base):
     # Relacionamentos
     compra = relationship("CompraFornecedor", back_populates="itens")
     produto = relationship("Produto")
+
+
+class TaxaPagamento(Base):
+    """Configuração de taxas de máquina para cada tipo de pagamento"""
+    __tablename__ = "taxas_pagamento"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ativo = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class Maquina(Base):
+    """Configuração de taxas por máquina (cada máquina pode ter suas próprias taxas)"""
+    __tablename__ = "maquinas"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(100), nullable=False, unique=True, index=True)  # Ex: "Máquina 1", "Point 1"
+    descricao = Column(String(255))  # Descrição opcional
+    taxa_dinheiro = Column(Numeric(5, 2), default=0)  # % de taxa para Dinheiro
+    taxa_pix = Column(Numeric(5, 2), default=0.50)  # % de taxa para PIX
+    taxa_debito = Column(Numeric(5, 2), default=2.60)  # % de taxa para Débito
+    taxa_credito = Column(Numeric(5, 2), default=3.20)  # % de taxa para Crédito
+    eh_default = Column(Boolean, default=False)  # Máquina padrão
+    ativo = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

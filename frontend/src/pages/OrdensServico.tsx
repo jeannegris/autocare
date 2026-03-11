@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { 
   Plus, 
   Search, 
@@ -424,11 +424,21 @@ export default function OrdensServicoNova() {
     setModalEditar(true);
   };
 
-  const handleChangeStatus = (novoStatus: string, motivoCancelamento?: string) => {
+  const handleChangeStatus = (novoStatus: string, motivoCancelamento?: string, statusData?: any) => {
     if (ordemSelecionada) {
       const payload: any = { status: novoStatus };
       if (novoStatus === 'CANCELADA' && motivoCancelamento) {
         payload.motivo_cancelamento = motivoCancelamento;
+      }
+      
+      // Adicionar dados de forma de pagamento se fornecidos
+      if (statusData) {
+        if (statusData.forma_pagamento) {
+          payload.forma_pagamento = statusData.forma_pagamento;
+        }
+        if (statusData.numero_parcelas) {
+          payload.numero_parcelas = statusData.numero_parcelas;
+        }
       }
       
       atualizarStatusMutation.mutate({ id: ordemSelecionada, ...payload }, {
@@ -1000,8 +1010,25 @@ export default function OrdensServicoNova() {
                     </td>
 
                     <td className="px-6 py-4 text-center">
-                      <div className="text-sm font-medium text-green-600">
-                        R$ {parseFloat(String(ordem.valor_faturado || 0)).toFixed(2).replace('.', ',')}
+                      <div className="relative group">
+                        <div className="text-sm font-medium text-green-600 cursor-help">
+                          R$ {parseFloat(String(ordem.valor_faturado || 0)).toFixed(2).replace('.', ',')}
+                        </div>
+                        
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                          <div className="mb-1 font-semibold">Detalhamento do Valor Faturado:</div>
+                          <div>Valor Cliente: R$ {(() => {
+                            const valorServico = parseFloat(String(ordem.valor_servico || 0));
+                            const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
+                            const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
+                            return (valorServico + valorPecas - valorDesconto).toFixed(2).replace('.', ',');
+                          })()}</div>
+                          <div>Custo Peças: -R$ {parseFloat(String(ordem.valor_custo_pecas || 0)).toFixed(2).replace('.', ',')}</div>
+                          <div>Mão de Obra Avulsa: -R$ {parseFloat(String(ordem.valor_mao_obra_avulso || 0)).toFixed(2).replace('.', ',')}</div>
+                          <div>Taxa Máquina: -R$ {parseFloat(String(ordem.taxa_pagamento_aplicada || 0)).toFixed(2).replace('.', ',')}</div>
+                          <div className="border-t border-gray-500 mt-1 pt-1 font-semibold">Valor Faturado: R$ {parseFloat(String(ordem.valor_faturado || 0)).toFixed(2).replace('.', ',')}</div>
+                        </div>
                       </div>
                     </td>
                     

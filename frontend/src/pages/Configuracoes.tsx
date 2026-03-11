@@ -12,6 +12,17 @@ interface Configuracao {
   tipo: string;
 }
 
+interface Maquina {
+  id: number;
+  nome: string;
+  taxa_dinheiro: number;
+  taxa_pix: number;
+  taxa_debito: number;
+  taxa_credito: number;
+  eh_default: boolean;
+  ativo: boolean;
+}
+
 interface SugestaoManutencao {
   id: number;
   nome_peca: string;
@@ -98,6 +109,19 @@ export default function Configuracoes() {
   const [senhaDeletar, setSenhaDeletar] = useState('');
   const [mostrarModalLogsServicos, setMostrarModalLogsServicos] = useState(false);
   const [logsServicos, setLogsServicos] = useState('');
+  // Estados para Máquinas
+  const [mostrarModalMaquina, setMostrarModalMaquina] = useState(false);
+  const [maquinaEdit, setMaquinaEdit] = useState<Maquina | null>(null);
+  const [maquinaParaDeletar, setMaquinaParaDeletar] = useState<Maquina | null>(null);
+  const [formMaquina, setFormMaquina] = useState({
+    nome: '',
+    taxa_dinheiro: '',
+    taxa_pix: '',
+    taxa_debito: '',
+    taxa_credito: '',
+    eh_default: false,
+    ativo: true
+  });
   const [formSugestao, setFormSugestao] = useState({
     nome_peca: '',
     km_media_troca: '',
@@ -131,7 +155,14 @@ export default function Configuracoes() {
     }
   });
 
-  
+  // Query: buscar máquinas
+  const { data: maquinas, isLoading: isLoadingMaquinas, refetch: refetchMaquinas } = useQuery<Maquina[]>({
+    queryKey: ['maquinas'],
+    queryFn: async () => {
+      const response = await apiFetch('/configuracoes/maquinas');
+      return response.maquinas || [];
+    }
+  });
 
   // Helper: fallback via /health para status básico (compatibilidade)
   async function fetchHealth() {
@@ -364,6 +395,69 @@ export default function Configuracoes() {
     }
   });
 
+  // Mutation: criar/atualizar máquina
+  const mutationMaquina = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        nome: formMaquina.nome,
+        taxa_dinheiro: parseFloat(formMaquina.taxa_dinheiro || '0'),
+        taxa_pix: parseFloat(formMaquina.taxa_pix || '0'),
+        taxa_debito: parseFloat(formMaquina.taxa_debito || '0'),
+        taxa_credito: parseFloat(formMaquina.taxa_credito || '0'),
+        eh_default: formMaquina.eh_default,
+        ativo: formMaquina.ativo
+      };
+
+      if (maquinaEdit) {
+        return await apiFetch(`/configuracoes/maquinas/${maquinaEdit.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        });
+      } else {
+        return await apiFetch('/configuracoes/maquinas', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+      }
+    },
+    onSuccess: () => {
+      toast.success(maquinaEdit ? 'Máquina atualizada com sucesso!' : 'Máquina criada com sucesso!');
+      setMostrarModalMaquina(false);
+      setMaquinaEdit(null);
+      setFormMaquina({
+        nome: '',
+        taxa_dinheiro: '',
+        taxa_pix: '',
+        taxa_debito: '',
+        taxa_credito: '',
+        eh_default: false,
+        ativo: true
+      });
+      refetchMaquinas();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao salvar máquina');
+    }
+  });
+
+  // Mutation: deletar máquina
+  const mutationDeletarMaquina = useMutation({
+    mutationFn: async (maquinaId: number) => {
+      return await apiFetch(`/configuracoes/maquinas/${maquinaId}`, {
+        method: 'DELETE'
+      });
+    },
+    onSuccess: () => {
+      toast.success('Máquina excluída com sucesso!');
+      setMaquinaParaDeletar(null);
+      refetchMaquinas();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao excluir máquina');
+      setMaquinaParaDeletar(null);
+    }
+  });
+
   // Mutation: criar backup do banco de dados
   const mutationBackup = useMutation({
     mutationFn: async (senha: string) => {
@@ -539,6 +633,55 @@ export default function Configuracoes() {
       return;
     }
     mutationSugestao.mutate();
+  };
+
+  const handleSalvarMaquina = () => {
+    if (!formMaquina.nome.trim()) {
+      toast.error('Informe o nome da máquina');
+      return;
+    }
+    mutationMaquina.mutate();
+  };
+
+  const handleAbrirModalMaquina = (maquina?: Maquina) => {
+    if (maquina) {
+      setMaquinaEdit(maquina);
+      setFormMaquina({
+        nome: maquina.nome,
+        taxa_dinheiro: maquina.taxa_dinheiro.toString(),
+        taxa_pix: maquina.taxa_pix.toString(),
+        taxa_debito: maquina.taxa_debito.toString(),
+        taxa_credito: maquina.taxa_credito.toString(),
+        eh_default: maquina.eh_default,
+        ativo: maquina.ativo
+      });
+    } else {
+      setMaquinaEdit(null);
+      setFormMaquina({
+        nome: '',
+        taxa_dinheiro: '',
+        taxa_pix: '',
+        taxa_debito: '',
+        taxa_credito: '',
+        eh_default: false,
+        ativo: true
+      });
+    }
+    setMostrarModalMaquina(true);
+  };
+
+  const handleFecharModalMaquina = () => {
+    setMostrarModalMaquina(false);
+    setMaquinaEdit(null);
+    setFormMaquina({
+      nome: '',
+      taxa_dinheiro: '',
+      taxa_pix: '',
+      taxa_debito: '',
+      taxa_credito: '',
+      eh_default: false,
+      ativo: true
+    });
   };
 
   const handleCriarBackup = () => {
@@ -1334,6 +1477,290 @@ export default function Configuracoes() {
                 className="px-4 py-2 text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
               >
                 {mutationDeletarSugestao.isPending ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Card: Configuração de Máquinas */}
+      <div className="p-6 bg-white rounded-lg shadow-md">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="flex items-center text-xl font-semibold text-gray-800">
+            <Wrench className="w-5 h-5 mr-2 text-purple-600" />
+            Configuração de Máquinas
+          </h2>
+          <button
+            onClick={() => handleAbrirModalMaquina()}
+            className="flex items-center px-4 py-2 text-sm text-white bg-purple-600 rounded-md hover:bg-purple-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Nova Máquina
+          </button>
+        </div>
+
+        <p className="mb-4 text-sm text-gray-600">
+          Configure as máquinas (terminais) e suas taxas de pagamento. Cada máquina pode ter taxas diferentes para débito, crédito, PIX e dinheiro.
+        </p>
+
+        {isLoadingMaquinas ? (
+          <div className="py-8 text-center">
+            <div className="w-8 h-8 mx-auto border-b-2 border-purple-600 rounded-full animate-spin"></div>
+            <p className="mt-2 text-gray-600">Carregando máquinas...</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                    Nome
+                  </th>
+                  <th className="px-4 py-3 text-xs font-medium tracking-wider text-center text-gray-500 uppercase">
+                    Dinheiro
+                  </th>
+                  <th className="px-4 py-3 text-xs font-medium tracking-wider text-center text-gray-500 uppercase">
+                    PIX
+                  </th>
+                  <th className="px-4 py-3 text-xs font-medium tracking-wider text-center text-gray-500 uppercase">
+                    Débito
+                  </th>
+                  <th className="px-4 py-3 text-xs font-medium tracking-wider text-center text-gray-500 uppercase">
+                    Crédito
+                  </th>
+                  <th className="px-4 py-3 text-xs font-medium tracking-wider text-center text-gray-500 uppercase">
+                    Padrão
+                  </th>
+                  <th className="px-4 py-3 text-xs font-medium tracking-wider text-center text-gray-500 uppercase">
+                    Ações
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {maquinas && maquinas.length > 0 ? (
+                  maquinas.map((maquina) => (
+                    <tr key={maquina.id} className={!maquina.ativo ? 'bg-gray-50 opacity-60' : ''}>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        {maquina.nome}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-700">
+                        {maquina.taxa_dinheiro}%
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-700">
+                        {maquina.taxa_pix}%
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-700">
+                        {maquina.taxa_debito}%
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center text-gray-700">
+                        {maquina.taxa_credito}%
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center">
+                        {maquina.eh_default && (
+                          <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                            Sim
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center space-x-2">
+                        <button
+                          onClick={() => handleAbrirModalMaquina(maquina)}
+                          className="inline-flex items-center px-3 py-1 text-white bg-blue-600 rounded hover:bg-blue-700"
+                        >
+                          <Edit2 className="w-3 h-3 mr-1" />
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => setMaquinaParaDeletar(maquina)}
+                          className="inline-flex items-center px-3 py-1 text-white bg-red-600 rounded hover:bg-red-700"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          Deletar
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                      Nenhuma máquina configurada
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal: Criar/Editar Máquina */}
+      {mostrarModalMaquina && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="relative w-full max-w-2xl p-6 bg-white rounded-lg shadow-xl">
+            <button
+              onClick={handleFecharModalMaquina}
+              className="absolute text-gray-500 top-4 right-4 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="mb-4 text-xl font-semibold text-gray-900">
+              {maquinaEdit ? 'Editar Máquina' : 'Nova Máquina'}
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block mb-2 text-sm font-medium text-gray-700">
+                  Nome da Máquina *
+                </label>
+                <input
+                  type="text"
+                  value={formMaquina.nome}
+                  onChange={(e) => setFormMaquina({ ...formMaquina, nome: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Ex: Máquina 1, Point 1, Terminal Principal"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-2 text-sm font-medium text-gray-700">
+                    Taxa Dinheiro (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formMaquina.taxa_dinheiro}
+                    onChange={(e) => setFormMaquina({ ...formMaquina, taxa_dinheiro: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-2 text-sm font-medium text-gray-700">
+                    Taxa PIX (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formMaquina.taxa_pix}
+                    onChange={(e) => setFormMaquina({ ...formMaquina, taxa_pix: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-2 text-sm font-medium text-gray-700">
+                    Taxa Débito (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formMaquina.taxa_debito}
+                    onChange={(e) => setFormMaquina({ ...formMaquina, taxa_debito: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-2 text-sm font-medium text-gray-700">
+                    Taxa Crédito (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formMaquina.taxa_credito}
+                    onChange={(e) => setFormMaquina({ ...formMaquina, taxa_credito: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formMaquina.eh_default}
+                    onChange={(e) => setFormMaquina({ ...formMaquina, eh_default: e.target.checked })}
+                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">
+                    Definir como máquina padrão
+                  </span>
+                </label>
+
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formMaquina.ativo}
+                    onChange={(e) => setFormMaquina({ ...formMaquina, ativo: e.target.checked })}
+                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">
+                    Ativa
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleFecharModalMaquina}
+                className="flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSalvarMaquina}
+                disabled={!formMaquina.nome || mutationMaquina.isPending}
+                className="flex items-center justify-center flex-1 px-4 py-2 text-white bg-purple-600 rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                {mutationMaquina.isPending ? 'Salvando...' : maquinaEdit ? 'Atualizar' : 'Criar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação de exclusão de máquina */}
+      {maquinaParaDeletar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="relative w-full max-w-md p-6 bg-white rounded-lg shadow-lg">
+            <button
+              onClick={() => setMaquinaParaDeletar(null)}
+              className="absolute text-gray-500 top-4 right-4 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="mb-4 text-xl font-semibold text-red-600">
+              <Trash2 className="inline w-5 h-5 mr-2" />
+              Confirmar Exclusão
+            </h2>
+            <p className="mb-6 text-gray-700">
+              Tem certeza que deseja excluir a máquina <strong>{maquinaParaDeletar.nome}</strong>?
+              Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setMaquinaParaDeletar(null)}
+                className="px-4 py-2 text-gray-700 bg-gray-300 rounded-md hover:bg-gray-400"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => mutationDeletarMaquina.mutate(maquinaParaDeletar.id)}
+                disabled={mutationDeletarMaquina.isPending}
+                className="px-4 py-2 text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
+              >
+                {mutationDeletarMaquina.isPending ? 'Excluindo...' : 'Excluir'}
               </button>
             </div>
           </div>
