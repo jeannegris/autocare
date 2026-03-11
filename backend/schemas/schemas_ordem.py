@@ -184,6 +184,8 @@ class OrdemServicoNovaList(BaseModel):
     valor_pecas: Optional[Decimal] = None
     valor_desconto: Optional[Decimal] = None
     valor_total: Decimal = Decimal('0.00')
+    valor_custo_pecas: Decimal = Decimal('0.00')  # Custo das peças
+    valor_mao_obra_avulso: Decimal = Decimal('0.00')  # Mão de obra avulsa
     valor_faturado: Decimal = Decimal('0.00')  # Valor faturado (lucro líquido)
     
     class Config:

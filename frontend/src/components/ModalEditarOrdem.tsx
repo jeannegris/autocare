@@ -382,7 +382,6 @@ export default function ModalEditarOrdem({
               <label className="block mb-2 text-sm font-medium text-gray-700">
                 <Car className="inline w-4 h-4 mr-1" />
                 KM do Veículo
-                {mostrarServicos && <span className="ml-1 text-red-500">*</span>}
               </label>
               <input
                 type="number"
@@ -390,7 +389,6 @@ export default function ModalEditarOrdem({
                 onChange={(e) => handleChange('km_veiculo', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 min="0"
-                required={mostrarServicos}
                 placeholder="Ex: 50000"
               />
             </div>

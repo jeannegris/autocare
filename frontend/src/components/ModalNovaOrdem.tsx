@@ -678,7 +678,6 @@ export default function ModalNovaOrdem({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   KM Atual do Veículo
-                  {mostrarServicos && <span className="text-red-500 ml-1">*</span>}
                 </label>
                 <input
                   type="number"
@@ -687,7 +686,6 @@ export default function ModalNovaOrdem({
                   onBlur={handleKmBlur}
                   placeholder={veiculoSelecionado ? `Atual: ${veiculoSelecionado.km_atual}` : ''}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required={mostrarServicos}
                 />
               </div>
             )}

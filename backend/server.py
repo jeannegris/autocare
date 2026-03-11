@@ -17,7 +17,7 @@ from config import DEBUG, ALLOWED_ORIGINS, UPLOAD_FOLDER
 from routes import autocare_auth, autocare_usuarios, autocare_perfis, autocare_clientes, autocare_veiculos
 from routes import autocare_estoque, autocare_ordens, autocare_fornecedores
 from routes import autocare_relatorios, autocare_dashboard, autocare_configuracoes
-from routes import autocare_sugestoes_manutencao
+from routes import autocare_sugestoes_manutencao, autocare_compras_fornecedor
 from models.autocare_models import Perfil, Usuario
 import json
 
@@ -189,6 +189,7 @@ app.include_router(autocare_relatorios.router, prefix="/api/relatorios", tags=["
 app.include_router(autocare_dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(autocare_configuracoes.router, prefix="/api/configuracoes", tags=["Configurações"])
 app.include_router(autocare_sugestoes_manutencao.router, prefix="/api/sugestoes-manutencao", tags=["Sugestões de Manutenção"])
+app.include_router(autocare_compras_fornecedor.router, prefix="/api/compras-fornecedor", tags=["Compras de Fornecedor"])
 
 # Compatibilidade com frontend servido em /autocare: expor mesmos endpoints em /autocare-api
 app.include_router(autocare_auth.router, prefix="/autocare-api/auth", tags=["Autenticação"])
@@ -203,6 +204,7 @@ app.include_router(autocare_relatorios.router, prefix="/autocare-api/relatorios"
 app.include_router(autocare_dashboard.router, prefix="/autocare-api/dashboard", tags=["Dashboard"])
 app.include_router(autocare_configuracoes.router, prefix="/autocare-api/configuracoes", tags=["Configurações"])
 app.include_router(autocare_sugestoes_manutencao.router, prefix="/autocare-api/sugestoes-manutencao", tags=["Sugestões de Manutenção"])
+app.include_router(autocare_compras_fornecedor.router, prefix="/autocare-api/compras-fornecedor", tags=["Compras de Fornecedor"])
 
 # Middleware de modo manutenção: quando arquivo sentinela existir, bloquear requisições
 @app.middleware("http")

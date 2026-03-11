@@ -6,6 +6,7 @@ export default function ConfirmModal({
   message = 'Tem certeza?',
   confirmText = 'Confirmar',
   cancelText = 'Cancelar',
+  isDangerous = false,
   onCancel,
   onConfirm
 }: {
@@ -14,6 +15,7 @@ export default function ConfirmModal({
   message?: string
   confirmText?: string
   cancelText?: string
+  isDangerous?: boolean
   onCancel: () => void
   onConfirm: () => void
 }) {
@@ -33,7 +35,12 @@ export default function ConfirmModal({
         </div>
         <div className="flex justify-end space-x-3">
           <button onClick={onCancel} className="px-4 py-2 bg-gray-200 rounded-md">{cancelText}</button>
-          <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-md">{confirmText}</button>
+          <button 
+            onClick={onConfirm} 
+            className={`px-4 py-2 text-white rounded-md ${isDangerous ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+          >
+            {confirmText}
+          </button>
         </div>
       </div>
     </div>

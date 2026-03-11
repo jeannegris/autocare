@@ -441,3 +441,46 @@ class BackupLog(Base):
 
     def __repr__(self):
         return f"<BackupLog(id={self.id}, tipo={self.tipo}, data_hora={self.data_hora}, status={self.status})>"
+
+
+class CompraFornecedor(Base):
+    """Registro de compras/notas de fornecedores"""
+    __tablename__ = "compras_fornecedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    numero_nota = Column(String(50), nullable=True)  # Número da nota fiscal
+    fornecedor_id = Column(Integer, ForeignKey("fornecedores.id"), nullable=False)
+    data_compra = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    valor_total_itens = Column(Numeric(12, 2), default=0)  # Soma dos valores dos itens
+    valor_frete = Column(Numeric(10, 2), default=0)  # Valor do frete a ser rateado
+    valor_total = Column(Numeric(12, 2), default=0)  # valor_total_itens + frete
+    observacoes = Column(Text, nullable=True)
+    usuario_id = Column(Integer, nullable=True)
+    usuario_nome = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relacionamentos
+    fornecedor = relationship("Fornecedor", backref="compras")
+    itens = relationship("ItemCompraFornecedor", back_populates="compra", cascade="all, delete-orphan")
+
+
+class ItemCompraFornecedor(Base):
+    """Itens (peças) de uma compra de fornecedor"""
+    __tablename__ = "itens_compra_fornecedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    compra_id = Column(Integer, ForeignKey("compras_fornecedor.id"), nullable=False)
+    produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
+    quantidade = Column(Integer, nullable=False)
+    preco_custo_unitario = Column(Numeric(10, 2), nullable=False)  # Custo sem frete
+    preco_venda_unitario = Column(Numeric(10, 2), nullable=True)  # Preço de venda
+    margem_lucro = Column(Numeric(10, 2), nullable=True)  # Margem de lucro em %
+    frete_unitario_rateado = Column(Numeric(10, 2), default=0)  # Frete rateado por unidade
+    preco_custo_total = Column(Numeric(12, 2), nullable=False)  # Custo total com frete incluído
+    valor_total = Column(Numeric(12, 2), nullable=False)  # quantidade * preco_venda_unitario (se houver)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relacionamentos
+    compra = relationship("CompraFornecedor", back_populates="itens")
+    produto = relationship("Produto")

@@ -58,11 +58,11 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         )
     ).count()
     
-    # Faturamento do mês (soma de valor_total + valor_mao_obra_avulso das OS concluídas)
-    # Nota: valor_total já tem mão de obra avulsa subtraída, então para receita bruta precisamos somar de volta
+    # Faturamento do mês (soma de valor_total das OS concluídas)
+    # valor_total é o valor cobrado ao cliente (receita bruta)
     faturamento_mes = db.query(
         func.sum(
-            func.coalesce(OrdemServico.valor_total, 0) + func.coalesce(OrdemServico.valor_mao_obra_avulso, 0)
+            func.coalesce(OrdemServico.valor_total, 0)
         )
     ).filter(
         and_(
@@ -72,11 +72,11 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         )
     ).scalar() or Decimal('0.00')
     
-    # Faturamento hoje (soma de valor_total + valor_mao_obra_avulso das OS concluídas hoje)
+    # Faturamento hoje (soma de valor_total das OS concluídas hoje)
     hoje = date.today()
     faturamento_hoje = db.query(
         func.sum(
-            func.coalesce(OrdemServico.valor_total, 0) + func.coalesce(OrdemServico.valor_mao_obra_avulso, 0)
+            func.coalesce(OrdemServico.valor_total, 0)
         )
     ).filter(
         and_(

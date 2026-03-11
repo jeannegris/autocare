@@ -1,0 +1,23 @@
+ M backend/models/autocare_models.py
+ M backend/routes/autocare_dashboard.py
+ M backend/routes/autocare_ordens.py
+ M backend/schemas/schemas_fornecedor.py
+ M backend/schemas/schemas_ordem.py
+ M backend/server.py
+ M frontend/src/components/ConfirmModal.tsx
+ M frontend/src/components/ModalEditarOrdem.tsx
+ M frontend/src/components/ModalNovaOrdem.tsx
+ M frontend/src/pages/Clientes.tsx
+ M frontend/src/pages/Estoque.tsx
+ M frontend/src/pages/Fornecedores.tsx
+ M frontend/src/pages/OrdensServico.tsx
+ M frontend/yarn.lock
+?? backend/routes/autocare_compras_fornecedor.py
+?? backend/schemas/schemas_compra_fornecedor.py
+?? backend/scripts/analisar_valor_faturado.py
+?? backend/scripts/corrigir_valor_faturado.py
+?? backend/scripts/corrigir_valor_faturado_final.py
+?? backup_log.txt
+?? changes.txt
+?? frontend/package-lock.json
+?? frontend/src/components/ModalCompraFornecedor.tsx

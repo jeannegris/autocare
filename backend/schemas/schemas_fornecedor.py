@@ -44,6 +44,7 @@ class FornecedorResponse(FornecedorBase):
 class FornecedorList(BaseModel):
     id: int
     nome: str
+    razao_social: Optional[str] = None
     cnpj: Optional[str] = None
     email: Optional[EmailStr] = None
     telefone: Optional[str] = None

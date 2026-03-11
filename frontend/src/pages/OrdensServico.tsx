@@ -13,6 +13,7 @@ import {
   Car,
   Calendar,
   Eye,
+  EyeOff,
   PlayCircle,
   XCircle,
   Package,
@@ -139,6 +140,7 @@ export default function OrdensServicoNova() {
   const [placaPreenchidaParaVeiculo, setPlacaPreenchidaParaVeiculo] = useState<string>('');
   const [ordemSelecionada, setOrdemSelecionada] = useState<number | null>(null);
   const [ordemParaExcluir, setOrdemParaExcluir] = useState<number | null>(null);
+  const [mostrarValores, setMostrarValores] = useState(true);
 
   // Função para lidar com ordenação
   const handleSort = (coluna: string) => {
@@ -523,7 +525,18 @@ export default function OrdensServicoNova() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 relative">
+          <button
+            onClick={() => setMostrarValores(!mostrarValores)}
+            className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            title={mostrarValores ? 'Ocultar valores' : 'Mostrar valores'}
+          >
+            {mostrarValores ? (
+              <Eye className="h-6 w-6" />
+            ) : (
+              <EyeOff className="h-6 w-6" />
+            )}
+          </button>
           <div className="flex items-start">
             <div className="flex-shrink-0">
               <DollarSign className="h-8 w-8 text-green-600" />
@@ -532,33 +545,41 @@ export default function OrdensServicoNova() {
               <div className="space-y-4">
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Valor Cobrado:</div>
-                  <div className="text-2xl font-bold text-blue-600">
-                    R$ {(() => {
-                      const total = ordensOrdenadas
-                        .filter(o => o.status === 'CONCLUIDA')
-                        .reduce((sum, o) => {
-                          const valorServico = parseFloat(String(o.valor_servico || 0));
-                          const valorPecas = parseFloat(String(o.valor_pecas || 0));
-                          const valorDesconto = parseFloat(String(o.valor_desconto || 0));
-                          const valorCobrado = valorServico + valorPecas - valorDesconto;
-                          return sum + valorCobrado;
-                        }, 0) || 0;
-                      return total.toFixed(2).replace('.', ',');
-                    })()}
+                  <div className="text-2xl font-bold text-blue-600 whitespace-nowrap">
+                    {mostrarValores ? (
+                      `R$ ${(() => {
+                        const total = ordensOrdenadas
+                          .filter(o => o.status === 'CONCLUIDA')
+                          .reduce((sum, o) => {
+                            const valorServico = parseFloat(String(o.valor_servico || 0));
+                            const valorPecas = parseFloat(String(o.valor_pecas || 0));
+                            const valorDesconto = parseFloat(String(o.valor_desconto || 0));
+                            const valorCobrado = valorServico + valorPecas - valorDesconto;
+                            return sum + valorCobrado;
+                          }, 0) || 0;
+                        return total.toFixed(2).replace('.', ',');
+                      })()}`
+                    ) : (
+                      '••••••••'
+                    )}
                   </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Valor Faturado:</div>
-                  <div className="text-2xl font-bold text-green-600">
-                    R$ {(() => {
-                      const total = ordensOrdenadas
-                        .filter(o => o.status === 'CONCLUIDA')
-                        .reduce((sum, o) => {
-                          const valorFaturado = parseFloat(String(o.valor_faturado || 0));
-                          return sum + valorFaturado;
-                        }, 0) || 0;
-                      return total.toFixed(2).replace('.', ',');
-                    })()}
+                  <div className="text-2xl font-bold text-green-600 whitespace-nowrap">
+                    {mostrarValores ? (
+                      `R$ ${(() => {
+                        const total = ordensOrdenadas
+                          .filter(o => o.status === 'CONCLUIDA')
+                          .reduce((sum, o) => {
+                            const valorFaturado = parseFloat(String(o.valor_faturado || 0));
+                            return sum + valorFaturado;
+                          }, 0) || 0;
+                        return total.toFixed(2).replace('.', ',');
+                      })()}`
+                    ) : (
+                      '••••••••'
+                    )}
                   </div>
                 </div>
               </div>

@@ -1,6 +1,7 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useState } from 'react'
 import ConfirmModal from '../components/ConfirmModal'
+import ModalCompraFornecedor from '../components/ModalCompraFornecedor'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Plus, 
@@ -15,7 +16,8 @@ import {
   Eye,
   RotateCcw,
   User,
-  AlertCircle
+  AlertCircle,
+  ShoppingCart
 } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import {
@@ -72,15 +74,22 @@ const INITIAL_FORM_DATA: FornecedorForm = {
 }
 
 const Fornecedores: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'cadastro' | 'compras'>('cadastro')
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showModalCompra, setShowModalCompra] = useState(false)
+  const [showModalSelecionarFornecedor, setShowModalSelecionarFornecedor] = useState(false)
+  const [fornecedorParaCompra, setFornecedorParaCompra] = useState<{ id: number; nome: string } | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formData, setFormData] = useState<FornecedorForm>(INITIAL_FORM_DATA)
   const [showDetails, setShowDetails] = useState<number | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [loadingCEP, setLoadingCEP] = useState(false)
+  const [detalhesCompra, setDetalhesCompra] = useState<any | null>(null)
+  const [isDeleteCompraConfirmOpen, setIsDeleteCompraConfirmOpen] = useState(false)
+  const [idCompraToDelete, setIdCompraToDelete] = useState<number | null>(null)
 
-  // Hook de validação
+  // Hook de valida????o
   const { erros, validarCampo, limparErro, limparTodosErros } = useValidacao()
 
   // useApi retorna o cliente axios
@@ -102,6 +111,15 @@ const Fornecedores: React.FC = () => {
       // Garantir que a lista retorne ordenada alfabeticamente por nome
       const list = res.data as Fornecedor[]
       return list.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+    }
+  })
+
+  // Query para buscar compras de fornecedor
+  const { data: compras = [] } = useQuery({
+    queryKey: ['compras-fornecedor'],
+    queryFn: async () => {
+      const res = await api.get('/compras-fornecedor/?limit=1000')
+      return res.data || []
     }
   })
 
@@ -136,19 +154,32 @@ const Fornecedores: React.FC = () => {
         return next.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
       })
       queryClient.invalidateQueries({ queryKey: ['fornecedores'] })
+      // Atualizar o formul??rio com os dados salvos do servidor em vez de resetar
+      setFormData({
+        nome: updated.nome,
+        razao_social: updated.razao_social || '',
+        cnpj: updated.cnpj || '',
+        email: updated.email || '',
+        telefone: updated.telefone || '',
+        endereco: updated.endereco || '',
+        cidade: updated.cidade || '',
+        estado: updated.estado || '',
+        cep: updated.cep || '',
+        contato: updated.contato || '',
+        observacoes: updated.observacoes || ''
+      })
       setShowModal(false)
       setEditingId(null)
-      setFormData(INITIAL_FORM_DATA)
     }
     ,
     onError: (error: any) => {
       console.error('updateMutation.onError', error)
-      // manter modal aberto para o usuário corrigir caso de erro
+      // manter modal aberto para o usu??rio corrigir caso de erro
     }
   })
 
 
-  // Estado do modal de confirmação de exclusão
+  // Estado do modal de confirma????o de exclus??o
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [idToDelete, setIdToDelete] = useState<number | null>(null)
 
@@ -158,7 +189,7 @@ const Fornecedores: React.FC = () => {
       const res = await api.delete(`/fornecedores/${id}`)
       return res.data
     },
-    // Usar optimistic update para garantir remoção imediata da UI
+    // Usar optimistic update para garantir remo????o imediata da UI
     onMutate: async (id: number) => {
       await queryClient.cancelQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'fornecedores' })
       // Snapshot dos valores anteriores para rollback
@@ -182,7 +213,7 @@ const Fornecedores: React.FC = () => {
       }
     },
     onSettled: () => {
-      // Garantir eventual consistência
+      // Garantir eventual consist??ncia
       queryClient.invalidateQueries({ queryKey: ['fornecedores'] })
     }
     
@@ -212,10 +243,45 @@ const Fornecedores: React.FC = () => {
     }
   })
 
+  // Mutation para excluir compra de fornecedor
+  const deleteCompraMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/compras-fornecedor/${id}`)
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['compras-fornecedor'] })
+      setIsDeleteCompraConfirmOpen(false)
+      setIdCompraToDelete(null)
+      setDetalhesCompra(null)
+    }
+  })
+
+  const handleDeleteCompra = (id: number) => {
+    setIdCompraToDelete(id)
+    setIsDeleteCompraConfirmOpen(true)
+  }
+
+  const confirmDeleteCompra = () => {
+    if (idCompraToDelete) {
+      deleteCompraMutation.mutate(idCompraToDelete)
+    }
+  }
+
+  const handleVerDetalhesCompra = async (compraId: number) => {
+    try {
+      const res = await api.get(`/compras-fornecedor/${compraId}`)
+      setDetalhesCompra(res.data)
+    } catch (error) {
+      console.error('Erro ao buscar detalhes da compra:', error)
+      alert('Erro ao buscar detalhes da compra')
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validar campos obrigatórios antes de submeter
+    // Validar campos obrigat??rios antes de submeter
     let formValido = true
     
     // Validar CNPJ se preenchido
@@ -249,7 +315,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Função para lidar com mudanças no CNPJ
+  // Fun????o para lidar com mudan??as no CNPJ
   const handleCnpjChange = (value: string) => {
     const valorFormatado = aplicarMascara('CNPJ', value)
     setFormData({...formData, cnpj: valorFormatado})
@@ -261,7 +327,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Função para lidar com mudanças no telefone
+  // Fun????o para lidar com mudan??as no telefone
   const handleTelefoneChange = (value: string) => {
     const valorFormatado = aplicarMascara('telefone', value)
     setFormData({...formData, telefone: valorFormatado})
@@ -273,7 +339,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Função para lidar com mudanças no email
+  // Fun????o para lidar com mudan??as no email
   const handleEmailChange = (value: string) => {
     setFormData({...formData, email: value})
     
@@ -284,7 +350,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Função para lidar com mudanças no CEP
+  // Fun????o para lidar com mudan??as no CEP
   const handleCepChange = async (value: string) => {
     const valorFormatado = aplicarMascara('cep', value)
     setFormData({...formData, cep: valorFormatado})
@@ -312,9 +378,8 @@ const Fornecedores: React.FC = () => {
   }
 
   const handleEdit = (fornecedor: Fornecedor) => {
-    setEditingId(fornecedor.id)
-    setFormData({
-      nome: fornecedor.nome,
+    const formDataToSet = {
+      nome: fornecedor.nome || '',
       razao_social: fornecedor.razao_social || '',
       cnpj: fornecedor.cnpj || '',
       email: fornecedor.email || '',
@@ -325,7 +390,10 @@ const Fornecedores: React.FC = () => {
       cep: fornecedor.cep || '',
       contato: fornecedor.contato || '',
       observacoes: fornecedor.observacoes || ''
-    })
+    }
+    
+    setEditingId(fornecedor.id)
+    setFormData(formDataToSet)
     setShowModal(true)
   }
 
@@ -357,75 +425,105 @@ const Fornecedores: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fornecedores</h1>
-          <p className="text-gray-600 mt-1">Gerencie os fornecedores da oficina</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <button
-            onClick={() => setShowInactive(!showInactive)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors text-center ${
-              showInactive 
-                ? 'bg-gray-600 text-white hover:bg-gray-700' 
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            {showInactive ? 'Ver Ativos' : 'Ver Inativos'}
-          </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
-          >
-            <Plus className="h-5 w-5" />
-            Novo Fornecedor
-          </button>
-        </div>
-      </div>
-
-      {/* Barra de busca */}
+      {/* Cabe??alho */}
       <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <input
-            type="text"
-            placeholder="Buscar por nome, CNPJ ou email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Fornecedores</h1>
+        <p className="text-gray-600 mt-1">Gerencie fornecedores e compras</p>
       </div>
 
-      {/* Lista de fornecedores */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {filteredFornecedores.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            <Building className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-            <p className="text-lg">Nenhum fornecedor encontrado</p>
-            <p className="text-sm">Clique em "Novo Fornecedor" para adicionar o primeiro</p>
+      {/* Abas */}
+      <div className="flex gap-2 mb-6 border-b">
+        <button
+          onClick={() => setActiveTab('cadastro')}
+          className={`px-4 py-3 font-medium transition-colors border-b-2 ${
+            activeTab === 'cadastro'
+              ? 'text-blue-600 border-blue-600'
+              : 'text-gray-600 border-transparent hover:text-gray-900'
+          }`}
+        >
+          Cadastro de Fornecedores
+        </button>
+        <button
+          onClick={() => setActiveTab('compras')}
+          className={`px-4 py-3 font-medium transition-colors border-b-2 ${
+            activeTab === 'compras'
+              ? 'text-blue-600 border-blue-600'
+              : 'text-gray-600 border-transparent hover:text-gray-900'
+          }`}
+        >
+          Compras de Fornecedor
+        </button>
+      </div>
+
+      {/* Conte??do das abas */}
+      {activeTab === 'cadastro' ? (
+        // ABA 1: CADASTRO DE FORNECEDORES
+        <div>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <button
+                onClick={() => setShowInactive(!showInactive)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors text-center ${
+                  showInactive 
+                    ? 'bg-gray-600 text-white hover:bg-gray-700' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {showInactive ? 'Ver Ativos' : 'Ver Inativos'}
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
+              >
+                <Plus className="h-5 w-5" />
+                Novo Fornecedor
+              </button>
+            </div>
           </div>
-        ) : (
-          <>
-            {/* Layout desktop (tabela) */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Fornecedor
+
+          {/* Barra de busca */}
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                type="text"
+                placeholder="Buscar por nome, CNPJ ou email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Lista de fornecedores */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {filteredFornecedores.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                <Building className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p className="text-lg">Nenhum fornecedor encontrado</p>
+                <p className="text-sm">Clique em "Novo Fornecedor" para adicionar o primeiro</p>
+              </div>
+            ) : (
+              <>
+                {/* Layout desktop (tabela) */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Fornecedor
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-xs">
                       Contato
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Localização
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Localiza????o
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Ações
+                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      A????es
                     </th>
                   </tr>
                 </thead>
@@ -443,41 +541,41 @@ const Fornecedores: React.FC = () => {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm space-y-1">
+                      <td className="px-3 py-4 max-w-xs">
+                        <div className="text-sm space-y-0.5 truncate">
                           {fornecedor.telefone && (
-                            <div className="flex items-center gap-1 text-gray-900">
-                              <Phone className="h-3 w-3" />
-                              {fornecedor.telefone}
+                            <div className="flex items-center gap-1 text-gray-900 truncate">
+                              <Phone className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate text-xs">{fornecedor.telefone}</span>
                             </div>
                           )}
                           {fornecedor.email && (
-                            <div className="flex items-center gap-1 text-gray-600">
-                              <Mail className="h-3 w-3" />
-                              {fornecedor.email}
+                            <div className="flex items-center gap-1 text-gray-600 truncate">
+                              <Mail className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate text-xs">{fornecedor.email}</span>
                             </div>
                           )}
                           {fornecedor.contato && (
-                            <div className="flex items-center gap-1 text-gray-600">
-                              <User className="h-3 w-3" />
-                              {fornecedor.contato}
+                            <div className="flex items-center gap-1 text-gray-600 truncate">
+                              <User className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate text-xs">{fornecedor.contato}</span>
                             </div>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {fornecedor.cidade && fornecedor.estado ? (
-                            <div className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
-                              {fornecedor.cidade}, {fornecedor.estado}
+                            <div className="flex items-center gap-1 text-xs">
+                              <MapPin className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{fornecedor.cidade}, {fornecedor.estado}</span>
                             </div>
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           fornecedor.ativo
                             ? 'bg-green-100 text-green-800'
@@ -488,6 +586,16 @@ const Fornecedores: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              setFornecedorParaCompra({ id: fornecedor.id, nome: fornecedor.nome })
+                              setShowModalCompra(true)
+                            }}
+                            className="text-green-600 hover:text-green-900 p-1"
+                            title="Adicionar compra"
+                          >
+                            <ShoppingCart className="h-4 w-4" />
+                          </button>
                           <button
                             onClick={() => setShowDetails(showDetails === fornecedor.id ? null : fornecedor.id)}
                             className="text-gray-400 hover:text-gray-600 p-1"
@@ -587,6 +695,16 @@ const Fornecedores: React.FC = () => {
                     
                     <div className="flex items-center gap-2 ml-4">
                       <button
+                        onClick={() => {
+                          setFornecedorParaCompra({ id: fornecedor.id, nome: fornecedor.nome })
+                          setShowModalCompra(true)
+                        }}
+                        className="text-green-600 hover:text-green-900 p-1"
+                        title="Adicionar compra"
+                      >
+                        <ShoppingCart className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => setShowDetails(showDetails === fornecedor.id ? null : fornecedor.id)}
                         className="text-gray-400 hover:text-gray-600 p-1"
                         title="Ver detalhes"
@@ -655,7 +773,7 @@ const Fornecedores: React.FC = () => {
                   
                   {fornecedor.razao_social && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-500">Razão Social</label>
+                      <label className="block text-sm font-medium text-gray-500">Raz??o Social</label>
                       <p className="text-sm text-gray-900">{fornecedor.razao_social}</p>
                     </div>
                   )}
@@ -690,7 +808,7 @@ const Fornecedores: React.FC = () => {
                   
                   {fornecedor.endereco && (
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-500">Endereço</label>
+                      <label className="block text-sm font-medium text-gray-500">Endere??o</label>
                       <p className="text-sm text-gray-900">{fornecedor.endereco}</p>
                     </div>
                   )}
@@ -718,7 +836,7 @@ const Fornecedores: React.FC = () => {
                   
                   {fornecedor.observacoes && (
                     <div className="md:col-span-3">
-                      <label className="block text-sm font-medium text-gray-500">Observações</label>
+                      <label className="block text-sm font-medium text-gray-500">Observa????es</label>
                       <p className="text-sm text-gray-900">{fornecedor.observacoes}</p>
                     </div>
                   )}
@@ -729,7 +847,7 @@ const Fornecedores: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de criação/edição */}
+      {/* Modal de cria????o/edi????o */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -781,7 +899,7 @@ const Fornecedores: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Razão Social
+                      Raz??o Social
                     </label>
                     <input
                       type="text"
@@ -863,7 +981,7 @@ const Fornecedores: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Contato Responsável
+                      Contato Respons??vel
                     </label>
                     <input
                       type="text"
@@ -896,7 +1014,7 @@ const Fornecedores: React.FC = () => {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Endereço
+                      Endere??o
                     </label>
                     <input
                       type="text"
@@ -933,7 +1051,7 @@ const Fornecedores: React.FC = () => {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Observações
+                      Observa????es
                     </label>
                     <textarea
                       value={formData.observacoes}
@@ -965,7 +1083,261 @@ const Fornecedores: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Modal de confirmação de exclusão (fora do map para manter JSX limpo) */}
+        </div>
+      ) : (
+        // ABA 2: COMPRAS DE FORNECEDOR
+        <div>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
+            <h2 className="text-xl font-bold text-gray-900">Notas de Compra Registradas</h2>
+            <button
+              onClick={() => setShowModalSelecionarFornecedor(true)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 font-medium"
+            >
+              <Plus className="h-5 w-5" />
+              Adicionar Compra
+            </button>
+          </div>
+
+          {compras.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+              <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p className="text-lg">Nenhuma compra registrada</p>
+              <p className="text-sm">Clique em "Adicionar Compra" para registrar uma nova compra</p>
+            </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-1">
+              {(compras as any[]).map((compra: any) => (
+                <div key={compra.id} className="bg-white rounded-lg shadow-md border-l-4 border-green-600 hover:shadow-lg transition p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                    <div>
+                      <p className="text-xs text-gray-600 font-semibold">Fornecedor</p>
+                      <p className="text-sm font-medium text-gray-900">{compra.fornecedor_nome || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 font-semibold">N?mero Nota</p>
+                      <p className="text-sm font-medium text-gray-900">{compra.numero_nota || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 font-semibold">Data Compra</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {compra.data_compra ? new Date(compra.data_compra).toLocaleDateString('pt-BR') : '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 font-semibold">Usu?rio</p>
+                      <p className="text-sm font-medium text-gray-900">{compra.usuario_nome || '-'}</p>
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="bg-blue-50 p-4 rounded">
+                        <p className="text-xs text-gray-600 font-semibold">Total Itens</p>
+                        <p className="text-lg font-bold text-blue-600">
+                          R$ {Number(compra.valor_total_itens || 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="bg-orange-50 p-4 rounded">
+                        <p className="text-xs text-gray-600 font-semibold">Frete</p>
+                        <p className="text-lg font-bold text-orange-600">
+                          R$ {Number(compra.valor_frete || 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="bg-green-50 p-4 rounded">
+                        <p className="text-xs text-gray-600 font-semibold">Total Geral</p>
+                        <p className="text-lg font-bold text-green-600">
+                          R$ {Number(compra.valor_total || 0).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {compra.observacoes && (
+                      <div className="bg-gray-50 p-3 rounded text-sm">
+                        <p className="text-xs text-gray-600 font-semibold mb-1">Observa??es</p>
+                        <p className="text-gray-700">{compra.observacoes}</p>
+                      </div>
+                    )}
+
+                    {compra.itens && compra.itens.length > 0 && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-xs text-gray-600 font-semibold mb-3">Itens da Compra ({compra.itens.length})</p>
+                        <div className="space-y-2">
+                          {compra.itens.map((item: any, idx: number) => (
+                            <div key={idx} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded">
+                              <div>
+                                <p className="font-medium text-gray-900">{item.produto_nome || 'Produto desconhecido'}</p>
+                                <p className="text-xs text-gray-600">Qtd: {item.quantidade}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold text-gray-900">R$ {Number(item.valor_total || 0).toFixed(2)}</p>
+                                <p className="text-xs text-gray-600">Custo: R$ {Number(item.preco_custo_unitario || 0).toFixed(2)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bot??es de a????o */}
+                  <div className="mt-6 pt-4 border-t flex gap-3">
+                    <button
+                      onClick={() => handleVerDetalhesCompra(compra.id)}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition font-medium text-sm"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Ver Detalhes
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCompra(compra.id)}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition font-medium text-sm"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal de detalhes da compra */}
+      {detalhesCompra && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold">Detalhes da Compra</h2>
+                <p className="text-blue-100 text-sm mt-1">Nota: {detalhesCompra.numero_nota || 'Sem n?mero'}</p>
+              </div>
+              <button
+                onClick={() => setDetalhesCompra(null)}
+                className="text-white hover:text-blue-100 transition"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Fornecedor</label>
+                  <p className="text-gray-900 font-semibold">{detalhesCompra.fornecedor_nome || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">N??mero Nota</label>
+                  <p className="text-gray-900 font-semibold">{detalhesCompra.numero_nota || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Data Compra</label>
+                  <p className="text-gray-900 font-semibold">
+                    {detalhesCompra.data_compra ? new Date(detalhesCompra.data_compra).toLocaleDateString('pt-BR') : '-'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Usu??rio</label>
+                  <p className="text-gray-900 font-semibold">{detalhesCompra.usuario_nome || '-'}</p>
+                </div>
+              </div>
+
+              {/* Valores */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Total Itens</label>
+                  <p className="text-2xl font-bold text-blue-600">
+                    R$ {Number(detalhesCompra.valor_total_itens || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Frete</label>
+                  <p className="text-2xl font-bold text-orange-600">
+                    R$ {Number(detalhesCompra.valor_frete || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Total Geral</label>
+                  <p className="text-2xl font-bold text-green-600">
+                    R$ {Number(detalhesCompra.valor_total || 0).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Observa????es */}
+              {detalhesCompra.observacoes && (
+                <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <label className="block text-sm font-medium text-gray-600 mb-2">Observa????es</label>
+                  <p className="text-gray-700">{detalhesCompra.observacoes}</p>
+                </div>
+              )}
+
+              {/* Itens da compra */}
+              {detalhesCompra.itens && detalhesCompra.itens.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Itens da Compra ({detalhesCompra.itens.length})</h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Produto</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Quantidade</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Pre?o Custo</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Pre?o Venda</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Margem</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {detalhesCompra.itens.map((item: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                              {item.produto_nome || 'Produto desconhecido'}
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-gray-600">{item.quantidade}</td>
+                            <td className="px-6 py-3 text-sm text-right text-gray-600">
+                              R$ {Number(item.preco_custo_unitario || 0).toFixed(2)}
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-gray-600">
+                              R$ {Number(item.preco_venda_unitario || 0).toFixed(2)}
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-gray-600">
+                              {item.margem_lucro ? `${Number(item.margem_lucro).toFixed(2)}%` : '-'}
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right font-semibold text-gray-900">
+                              R$ {Number(item.valor_total || 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Bot??es de a????o */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button
+                  onClick={() => setDetalhesCompra(null)}
+                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition font-medium"
+                >
+                  Fechar
+                </button>
+                <button
+                  onClick={() => {
+                    handleDeleteCompra(detalhesCompra.id)
+                    setDetalhesCompra(null)
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Excluir Compra
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmModal
         isOpen={isDeleteConfirmOpen}
         title="Desativar fornecedor"
@@ -974,6 +1346,91 @@ const Fornecedores: React.FC = () => {
         cancelText="Cancelar"
         onCancel={() => { setIsDeleteConfirmOpen(false); setIdToDelete(null) }}
         onConfirm={confirmDeleteFornecedor}
+      />
+
+      {/* Modal de sele????o de fornecedor para compra */}
+      {showModalSelecionarFornecedor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gray-50 border-b px-6 py-4 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Selecionar Fornecedor</h2>
+                <p className="text-gray-600 text-sm mt-1">Escolha um fornecedor para adicionar uma compra</p>
+              </div>
+              <button
+                onClick={() => setShowModalSelecionarFornecedor(false)}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {fornecedores.length === 0 ? (
+                <div className="text-center py-8">
+                  <Building className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-600">Nenhum fornecedor dispon??vel</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {fornecedores.map((fornecedor: Fornecedor) => (
+                    <button
+                      key={fornecedor.id}
+                      onClick={() => {
+                        setFornecedorParaCompra({ id: fornecedor.id, nome: fornecedor.nome })
+                        setShowModalCompra(true)
+                        setShowModalSelecionarFornecedor(false)
+                      }}
+                      className="text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-600 hover:bg-blue-50 transition"
+                    >
+                      <div className="font-semibold text-gray-900">{fornecedor.nome}</div>
+                      {fornecedor.cnpj && (
+                        <div className="text-xs text-gray-600 mt-1">CNPJ: {formatCNPJ(fornecedor.cnpj)}</div>
+                      )}
+                      {fornecedor.email && (
+                        <div className="text-xs text-gray-600 mt-1">?? {fornecedor.email}</div>
+                      )}
+                      {fornecedor.telefone && (
+                        <div className="text-xs text-gray-600 mt-1">?? {aplicarMascara('telefone', fornecedor.telefone)}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de compra de fornecedor */}
+      {fornecedorParaCompra && (
+        <ModalCompraFornecedor
+          isOpen={showModalCompra}
+          fornecedor_id={fornecedorParaCompra.id}
+          fornecedor_nome={fornecedorParaCompra.nome}
+          onClose={() => {
+            setShowModalCompra(false)
+            setFornecedorParaCompra(null)
+          }}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['produtos'] })
+            queryClient.invalidateQueries({ queryKey: ['compras-fornecedor'] })
+          }}
+        />
+      )}
+
+      {/* Modal de confirma????o de exclus??o de compra */}
+      <ConfirmModal
+        isOpen={isDeleteCompraConfirmOpen}
+        title="Excluir compra"
+        message="Tem certeza que deseja excluir esta compra de fornecedor? Esta a????o n??o pode ser desfeita."
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        onCancel={() => {
+          setIsDeleteCompraConfirmOpen(false)
+          setIdCompraToDelete(null)
+        }}
+        onConfirm={confirmDeleteCompra}
       />
     </div>
   )

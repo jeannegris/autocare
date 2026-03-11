@@ -651,7 +651,7 @@ function MovimentacaoModal({
               {/* Preço de Custo */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Preço de Custo Unitário *
+                  Preço de Custo Unitário
                 </label>
                 <input
                   type="number"
@@ -672,7 +672,6 @@ function MovimentacaoModal({
                     setFormData({...formData, preco_custo: parseFloat(valor.toFixed(2)), preco_unitario: parseFloat(valor.toFixed(2))})
                   }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
                   min={0}
                   placeholder="0,00"
                 />
