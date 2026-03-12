@@ -1,9 +1,9 @@
-// React import not required with the automatic JSX runtime
+﻿// React import not required with the automatic JSX runtime
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 
-console.log('🚀 AutoCare App - Build atualizado:', new Date().toISOString())
+console.log('ðŸš€ AutoCare App - Build atualizado:', new Date().toISOString())
 
 // Contexto de Autenticação
 import { AuthProvider } from './contexts/AuthContext'
@@ -11,11 +11,11 @@ import { AuthProvider } from './contexts/AuthContext'
 // Componentes
 import ProtectedRoute from './components/ProtectedRoute'
 
-// Páginas de Autenticação
+// PÃ¡ginas de Autenticação
 import Login from './pages/Login'
 import TwoFactorAuth from './pages/TwoFactorAuth'
 
-// Páginas principais
+// PÃ¡ginas principais
 import Dashboard from './pages/Dashboard'
 import Clientes from './pages/Clientes'
 import Veiculos from './pages/Veiculos'
@@ -46,7 +46,7 @@ function App() {
       <Router basename="/autocare">
         <AuthProvider>
           <Routes>
-            {/* Rotas Públicas */}
+            {/* Rotas PÃºblicas */}
             <Route path="/login" element={<Login />} />
             <Route path="/2fa" element={<TwoFactorAuth />} />
 

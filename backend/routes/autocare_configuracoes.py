@@ -672,41 +672,6 @@ def deletar_backup(
 
 # ====== FIM DOS ENDPOINTS DE BACKUP ======
 
-@router.get("/{chave}", response_model=ConfiguracaoResponse)
-def obter_configuracao(chave: str, db: Session = Depends(get_db)):
-    """Obtém uma configuração específica"""
-    config = db.query(Configuracao).filter(Configuracao.chave == chave).first()
-    if not config:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Configuração '{chave}' não encontrada"
-        )
-    return config
-
-@router.put("/{chave}", response_model=ConfiguracaoResponse)
-def atualizar_configuracao(
-    chave: str, 
-    dados: ConfiguracaoUpdate, 
-    db: Session = Depends(get_db)
-):
-    """Atualiza uma configuração"""
-    config = db.query(Configuracao).filter(Configuracao.chave == chave).first()
-    if not config:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Configuração '{chave}' não encontrada"
-        )
-    
-    # Se for senha, fazer hash
-    if config.tipo == 'password':
-        config.valor = hash_senha(dados.valor)
-    else:
-        config.valor = dados.valor
-    
-    db.commit()
-    db.refresh(config)
-    return config
-
 @router.post("/validar-senha", response_model=ValidarSenhaResponse)
 def validar_senha_supervisor(
     dados: ValidarSenhaRequest,
@@ -1240,6 +1205,45 @@ def criar_backup_postgres(dados: ValidarSenhaRequest, db: Session = Depends(get_
             mensagem="Erro ao criar backup",
             erro=str(e)
         )
+
+
+# ====== ROTAS GENÉRICAS (DEVEM SER POR ÚLTIMO para não interceptar rotas específicas) ======
+
+@router.get("/{chave}", response_model=ConfiguracaoResponse)
+def obter_configuracao(chave: str, db: Session = Depends(get_db)):
+    """Obtém uma configuração específica"""
+    config = db.query(Configuracao).filter(Configuracao.chave == chave).first()
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Configuração '{chave}' não encontrada"
+        )
+    return config
+
+
+@router.put("/{chave}", response_model=ConfiguracaoResponse)
+def atualizar_configuracao(
+    chave: str, 
+    dados: ConfiguracaoUpdate, 
+    db: Session = Depends(get_db)
+):
+    """Atualiza uma configuração"""
+    config = db.query(Configuracao).filter(Configuracao.chave == chave).first()
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Configuração '{chave}' não encontrada"
+        )
+    
+    # Se for senha, fazer hash
+    if config.tipo == 'password':
+        config.valor = hash_senha(dados.valor)
+    else:
+        config.valor = dados.valor
+    
+    db.commit()
+    db.refresh(config)
+    return config
 
 
 # Helper para obter usuário opcional (sem exigir autenticação)

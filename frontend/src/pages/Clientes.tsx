@@ -1259,7 +1259,7 @@ export default function Clientes() {
 
                       <div className="bg-gray-50 rounded-lg p-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-600">Servi?os</span>
+                          <span className="text-sm font-medium text-gray-600">Serviços</span>
                           <div className="flex items-center space-x-1">
                             <PeriodoFilter
                               periodoAtivo={periodoPorCliente[cliente.id] || 'T'}

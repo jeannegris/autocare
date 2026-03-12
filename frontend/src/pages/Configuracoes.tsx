@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner';
@@ -160,7 +160,7 @@ export default function Configuracoes() {
     queryKey: ['maquinas'],
     queryFn: async () => {
       const response = await apiFetch('/configuracoes/maquinas');
-      return response.maquinas || [];
+      return Array.isArray(response) ? response : (response.maquinas || []);
     }
   });
 
@@ -234,7 +234,7 @@ export default function Configuracoes() {
             venv_ativo: false,
           } as ServicesStatus;
         }
-        // último recurso: retornar algo neutro
+        // Último recurso: retornar algo neutro
         return { nginx: false, postgresql: false, fastapi: false, venv_ativo: false } as ServicesStatus;
       }
     }
@@ -440,7 +440,7 @@ export default function Configuracoes() {
     }
   });
 
-  // Mutation: deletar máquina
+  // Mutation: deletar mÃ¡quina
   const mutationDeletarMaquina = useMutation({
     mutationFn: async (maquinaId: number) => {
       return await apiFetch(`/configuracoes/maquinas/${maquinaId}`, {
@@ -553,7 +553,7 @@ export default function Configuracoes() {
     }
   });
 
-  // Mutation: sincronizar backups órfãos
+  // Mutation: sincronizar backups Orfãos
   const mutationSincronizarBackups = useMutation({
     mutationFn: async () => {
       return await apiFetch('/configuracoes/backups/sincronizar', {
@@ -562,7 +562,7 @@ export default function Configuracoes() {
     },
     onSuccess: (data: any) => {
       if (data.sucesso !== false) {
-        const msg = data.mensagem || `${data.sincronizados?.length || 0} arquivo(s) sincronizado(s), ${data.removidos?.length || 0} registro(s) órfão(s) removido(s)`;
+        const msg = data.mensagem || `${data.sincronizados?.length || 0} arquivo(s) sincronizado(s), ${data.removidos?.length || 0} registro(s) serão(s) removido(s)`;
         toast.success(msg);
         refetchBackups();
       } else {
@@ -1178,7 +1178,7 @@ export default function Configuracoes() {
         </div>
       )}
 
-      {/* Card: Sugestões de Manutenção Preventiva */}
+      {/* Card: SugestÃµes de Manutenção Preventiva */}
       <div className="p-6 bg-white rounded-lg shadow-md">
         <div className="flex items-center justify-between mb-4">
           <h2 className="flex items-center text-xl font-semibold text-gray-800">
@@ -1785,8 +1785,8 @@ export default function Configuracoes() {
               Criar Backup do Banco de Dados
             </h2>
             <p className="mb-4 text-gray-700">
-              Esta ação irá criar um backup completo do banco de dados PostgreSQL.
-              O arquivo será salvo em: <strong>/var/backups/autocare/</strong>
+              Esta ação irá¡ criar um backup completo do banco de dados PostgreSQL.
+              O arquivo será¡ salvo em: <strong>/var/backups/autocare/</strong>
             </p>
             <p className="mb-4 text-sm text-gray-600">
               Digite a senha do supervisor para confirmar:
@@ -1861,7 +1861,7 @@ export default function Configuracoes() {
                 onClick={() => mutationSincronizarBackups.mutate()}
                 disabled={mutationSincronizarBackups.isPending}
                 className="flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400"
-                title="Sincronizar backups órfãos (arquivos sem registro no BD)"
+                title="Sincronizar backups Orfãos (arquivos sem registro no BD)"
               >
                 {mutationSincronizarBackups.isPending ? (
                   <>
@@ -1871,7 +1871,7 @@ export default function Configuracoes() {
                 ) : (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2" />
-                    Sincronizar Órfãos
+                    Sincronizar Orfãos
                   </>
                 )}
               </button>
@@ -1983,7 +1983,7 @@ export default function Configuracoes() {
                 <strong>⚠️ ATENÇÃO:</strong> Esta ação irá <strong className="text-red-600">substituir TODOS os dados</strong> atuais do banco de dados!
               </p>
               <div className="p-3 mb-2 text-sm bg-yellow-50 border border-yellow-200 rounded">
-                <p className="font-semibold text-yellow-800">🚨 Avisos Importantes:</p>
+                <p className="font-semibold text-yellow-800">⚠️ Avisos Importantes:</p>
                 <ul className="mt-1 ml-4 text-xs text-yellow-700 list-disc">
                   <li>Todas as conexões ativas serão encerradas</li>
                   <li>Usuários conectados serão desconectados</li>
@@ -2010,7 +2010,7 @@ export default function Configuracoes() {
                   <div className="h-2.5 bg-orange-600 rounded-full animate-pulse" style={{width: '100%'}}></div>
                 </div>
                 <p className="mt-2 text-xs text-center text-gray-600">
-                  ⏳ Encerrando conexões e aplicando backup...
+                  ⚙️ Encerrando conexões e aplicando backup...
                 </p>
               </div>
             )}
@@ -2199,7 +2199,7 @@ export default function Configuracoes() {
         </div>
       )}
 
-      {/* Overlay de erro pós-restauração (ack obrigatório) */}
+      {/* Overlay de erro pós-restauração (ação obrigatório) */}
       {overlayErroRestore && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
           <div className="w-full max-w-md p-6 mx-4 text-center bg-white rounded-lg shadow-2xl">
@@ -2249,3 +2249,4 @@ export default function Configuracoes() {
     </div>
   );
 }
+
