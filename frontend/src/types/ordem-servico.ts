@@ -124,6 +124,7 @@ export interface OrdemServicoNova {
   funcionario_responsavel?: string;
   forma_pagamento?: string; // Novo campo
   numero_parcelas?: number; // Novo campo
+  maquina_id?: number;
   itens: ItemOrdemNova[];
   // Campos de resposta
   status?: string;
@@ -150,6 +151,10 @@ export interface OrdemServicoNova {
   veiculo_modelo?: string;
   veiculo_ano?: number;
 }
+
+export type OrdemServicoAtualizacao = Partial<OrdemServicoNova> & {
+  maquina_id?: number;
+};
 
 export interface OrdemServicoList {
   id: number;

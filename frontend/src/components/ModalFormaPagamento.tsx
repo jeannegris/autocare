@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react';
 import { X, CreditCard } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 interface Maquina {
   id: number;
@@ -53,14 +54,14 @@ export default function ModalFormaPagamento({
   const buscarMaquinas = async () => {
     setCarregandoMaquinas(true);
     try {
-      const response = await fetch('http://localhost:8008/configuracoes/maquinas');
-      if (!response.ok) throw new Error('Erro ao buscar máquinas');
-      const data = await response.json();
-      setMaquinas(data.maquinas || []);
+      const data = await apiFetch('/configuracoes/maquinas');
+      // O endpoint retorna diretamente a lista
+      const maquinasList = Array.isArray(data) ? data : (data.maquinas || []);
+      setMaquinas(maquinasList);
       
       // Selecionar máquina padrão automaticamente
-      const maquinaDefault = (data.maquinas || []).find((m: Maquina) => m.eh_default);
-      setMaquinaSelecionada(maquinaDefault || (data.maquinas || [])[0] || null);
+      const maquinaDefault = maquinasList.find((m: Maquina) => m.eh_default);
+      setMaquinaSelecionada(maquinaDefault || maquinasList[0] || null);
     } catch (err) {
       console.error('Erro ao buscar máquinas:', err);
       setErro('Erro ao carregar máquinas');
@@ -101,18 +102,26 @@ export default function ModalFormaPagamento({
   const getTaxaPercentual = (tipo: string): number => {
     if (!maquinaSelecionada) return 0;
     
+    let taxa = 0;
     switch (tipo) {
       case 'DINHEIRO':
-        return maquinaSelecionada.taxa_dinheiro;
+        taxa = maquinaSelecionada.taxa_dinheiro;
+        break;
       case 'PIX':
-        return maquinaSelecionada.taxa_pix;
+        taxa = maquinaSelecionada.taxa_pix;
+        break;
       case 'DEBITO':
-        return maquinaSelecionada.taxa_debito;
+        taxa = maquinaSelecionada.taxa_debito;
+        break;
       case 'CREDITO':
-        return maquinaSelecionada.taxa_credito;
+        taxa = maquinaSelecionada.taxa_credito;
+        break;
       default:
-        return 0;
+        taxa = 0;
     }
+    
+    // Garantir que é um número (em caso de vir como string do backend)
+    return typeof taxa === 'number' ? taxa : parseFloat(String(taxa));
   };
 
   const calcularTaxa = () => {

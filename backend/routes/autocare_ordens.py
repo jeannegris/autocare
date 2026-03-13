@@ -76,6 +76,53 @@ def obter_taxa_pagamento(db: Session, tipo_pagamento: Optional[str], maquina_id:
     
     return Decimal('0.00')
 
+def calcular_valor_faturado_liquido(
+    valor_total: Decimal,
+    valor_custo_pecas: Decimal,
+    valor_mao_obra_avulso: Decimal,
+    taxa_pagamento_aplicada: Decimal = Decimal('0.00')
+) -> Decimal:
+    """Calcula o valor faturado líquido da ordem."""
+    return valor_total - taxa_pagamento_aplicada - valor_mao_obra_avulso - valor_custo_pecas
+
+def calcular_custo_ativo_movimentos(movimentos: List[MovimentoEstoque], produto_id: int) -> Decimal:
+    """Calcula o custo ativo de um produto em uma OS considerando saídas e devoluções."""
+    chunks = []
+
+    movimentos_produto = [
+        movimento for movimento in movimentos
+        if movimento.item_id == produto_id
+    ]
+
+    for movimento in movimentos_produto:
+        quantidade = Decimal(str(movimento.quantidade or 0))
+        if quantidade <= 0:
+            continue
+
+        if movimento.tipo == "SAIDA":
+            preco_custo = Decimal(str(movimento.preco_custo or 0))
+            chunks.append({
+                'quantidade': quantidade,
+                'preco_custo': preco_custo,
+            })
+            continue
+
+        if movimento.tipo == "ENTRADA":
+            quantidade_devolver = quantidade
+            while quantidade_devolver > 0 and chunks:
+                ultimo_chunk = chunks[-1]
+                if ultimo_chunk['quantidade'] <= quantidade_devolver:
+                    quantidade_devolver -= ultimo_chunk['quantidade']
+                    chunks.pop()
+                else:
+                    ultimo_chunk['quantidade'] -= quantidade_devolver
+                    quantidade_devolver = Decimal('0.00')
+
+    return sum(
+        chunk['quantidade'] * chunk['preco_custo']
+        for chunk in chunks
+    ) if chunks else Decimal('0.00')
+
 def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optional[int] = None) -> Decimal:
     """
     Aplica a taxa de pagamento ao valor faturado da ordem
@@ -116,7 +163,19 @@ def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optiona
     ordem.taxa_pagamento_aplicada = taxa_valor
     ordem.maquina_id = maquina_id
     
+    # IMPORTANTE: Atualizar valor_faturado deduzindo a taxa de pagamento
+    # Fórmula: valor_faturado = valor_total - taxa_pagamento - valor_mao_obra_avulso - valor_custo_pecas
+    valor_total = Decimal(str(ordem.valor_total or 0))
+    valor_custo_pecas = Decimal(str(ordem.valor_custo_pecas or 0))
+    valor_mao_obra_avulso = Decimal(str(ordem.valor_mao_obra_avulso or 0))
+    
+    ordem.valor_faturado = valor_total - taxa_valor - valor_mao_obra_avulso - valor_custo_pecas
+    
     logger.info(f"Taxa de pagamento ({percentual_taxa}%) aplicada para OS {ordem.numero}: {ordem.forma_pagamento} - R${taxa_valor:.2f}")
+    logger.info(f"Componentes do valor_faturado: valor_total={valor_total}, taxa={taxa_valor}, mao_obra={valor_mao_obra_avulso}, custo_pecas={valor_custo_pecas}")
+    logger.info(f"Novo valor_faturado: R${ordem.valor_faturado:.2f}")
+    
+    db.flush()
     
     return taxa_valor
 
@@ -289,11 +348,11 @@ def validar_cpf(cpf: str) -> bool:
     if len(cpf) != 11:
         return False
     
-    # Verificar se todos os d??gitos s??o iguais
+    # Verificar se todos os dígitos são iguais
     if cpf == cpf[0] * 11:
         return False
     
-    # Calcular primeiro d??gito verificador
+    # Calcular primeiro dígito verificador
     soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
     resto = soma % 11
     digito1 = 0 if resto < 2 else 11 - resto
@@ -301,7 +360,7 @@ def validar_cpf(cpf: str) -> bool:
     if digito1 != int(cpf[9]):
         return False
     
-    # Calcular segundo d??gito verificador
+    # Calcular segundo dígito verificador
     soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
     resto = soma % 11
     digito2 = 0 if resto < 2 else 11 - resto
@@ -309,31 +368,31 @@ def validar_cpf(cpf: str) -> bool:
     return digito2 == int(cpf[10])
 
 def buscar_cliente_comum(termo_busca: str, db: Session):
-    """Fun????o comum para busca de cliente"""
+    """Função comum para busca de cliente"""
     termo = termo_busca.strip()
-    logger.info(f"???? Termo ap??s strip: '{termo}'")
+    logger.info(f"???? Termo após strip: '{termo}'")
     
     if not termo:
         logger.warning("??? Termo de busca vazio")
         return ClienteBuscaResponse(
             encontrado=False,
-            message="Termo de busca n??o pode estar vazio"
+            message="Termo de busca não pode estar vazio"
         )
     
     # Remove caracteres especiais para busca mais flex??vel
     termo_limpo = ''.join(filter(str.isalnum, termo))
     logger.info(f"???? Termo limpo: '{termo_limpo}'")
     
-    # Determinar se ?? CPF ou telefone para 11 d??gitos
+    # Determinar se é CPF ou telefone para 11 dígitos
     buscar_como_cpf = True
     if len(termo_limpo) == 11:
-        # Se tem 11 d??gitos, verificar se ?? CPF v??lido
+        # Se tem 11 dígitos, verificar se é CPF válido
         if not validar_cpf(termo_limpo):
-            # Se n??o for CPF v??lido, tratar como telefone
+            # Se não for CPF válido, tratar como telefone
             buscar_como_cpf = False
-            logger.info(f"???? 11 d??gitos inv??lidos como CPF, tratando como telefone: '{termo_limpo}'")
+            logger.info(f"???? 11 dígitos inválidos como CPF, tratando como telefone: '{termo_limpo}'")
         else:
-            logger.info(f"???? 11 d??gitos v??lidos como CPF: '{termo_limpo}'")
+            logger.info(f"???? 11 dígitos válidos como CPF: '{termo_limpo}'")
     
     # Construir query baseada no tipo detectado
     if buscar_como_cpf or len(termo_limpo) != 11:
@@ -351,11 +410,11 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
             )
         ).filter(Cliente.ativo == True).first()
     
-    # Se n??o encontrou e ?? 11 d??gitos, tentar a busca alternativa
+    # Se não encontrou e é 11 dígitos, tentar a busca alternativa
     if not cliente and len(termo_limpo) == 11:
         if buscar_como_cpf:
             # Tentou CPF, agora tentar telefone
-            logger.info("???? CPF n??o encontrado, tentando como telefone...")
+            logger.info("???? CPF não encontrado, tentando como telefone...")
             cliente = db.query(Cliente).filter(
                 or_(
                     func.regexp_replace(Cliente.telefone, '[^0-9]', '', 'g') == termo_limpo,
@@ -365,21 +424,21 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
             ).filter(Cliente.ativo == True).first()
         else:
             # Tentou telefone, agora tentar CPF
-            logger.info("???? Telefone n??o encontrado, tentando como CPF...")
+            logger.info("???? Telefone não encontrado, tentando como CPF...")
             cliente = db.query(Cliente).filter(
                 func.regexp_replace(Cliente.cpf_cnpj, '[^0-9]', '', 'g') == termo_limpo
             ).filter(Cliente.ativo == True).first()
     
     if not cliente:
-        logger.info(f"??? Cliente n??o encontrado para termo: '{termo}'")
+        logger.info(f"??? Cliente não encontrado para termo: '{termo}'")
         return ClienteBuscaResponse(
             encontrado=False,
-            message="Cliente n??o encontrado. Deseja cadastrar um novo cliente?"
+            message="Cliente não encontrado. Deseja cadastrar um novo cliente?"
         )
     
     logger.info(f"??? Cliente encontrado: {cliente.nome} (ID: {cliente.id})")
     
-    # Buscar ve??culos do cliente
+    # Buscar veículos do cliente
     veiculos = db.query(Veiculo).filter(
         and_(
             Veiculo.cliente_id == cliente.id,
@@ -415,21 +474,21 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
 
 @router.post("/buscar-veiculo", response_model=VeiculoBuscaResponse)
 def buscar_veiculo_por_placa(busca: VeiculoBuscaRequest, db: Session = Depends(get_db)):
-    """Buscar ve??culo por placa para ordem de servi??o"""
+    """Buscar veículo por placa para ordem de serviço"""
     placa = busca.placa.strip().upper()
-    logger.info(f"???? Buscando ve??culo por placa: '{placa}'")
+    logger.info(f"???? Buscando veículo por placa: '{placa}'")
     
     if not placa:
         logger.warning("??? Placa vazia")
         return VeiculoBuscaResponse(
             encontrado=False,
-            message="Placa n??o pode estar vazia"
+            message="Placa não pode estar vazia"
         )
     
-    # Remove caracteres especiais da placa para busca mais flex??vel
+    # Remove caracteres especiais da placa para busca mais flexível
     placa_limpa = ''.join(filter(str.isalnum, placa))
     
-    # Buscar ve??culo por placa
+    # Buscar veículo por placa
     veiculo = db.query(Veiculo).filter(
         or_(
             Veiculo.placa.ilike(f"%{placa}%"),
@@ -438,15 +497,15 @@ def buscar_veiculo_por_placa(busca: VeiculoBuscaRequest, db: Session = Depends(g
     ).filter(Veiculo.ativo == True).first()
     
     if not veiculo:
-        logger.info(f"??? Ve??culo n??o encontrado para placa: '{placa}'")
+        logger.info(f"??? Veículo não encontrado para placa: '{placa}'")
         return VeiculoBuscaResponse(
             encontrado=False,
-            message="Ve??culo n??o encontrado com essa placa."
+            message="Veículo não encontrado com essa placa."
         )
     
-    logger.info(f"??? Ve??culo encontrado: {veiculo.marca} {veiculo.modelo} - {veiculo.placa}")
+    logger.info(f"??? Veículo encontrado: {veiculo.marca} {veiculo.modelo} - {veiculo.placa}")
     
-    # Buscar cliente propriet??rio
+    # Buscar cliente proprietário
     cliente = db.query(Cliente).filter(
         and_(
             Cliente.id == veiculo.cliente_id,
@@ -455,13 +514,13 @@ def buscar_veiculo_por_placa(busca: VeiculoBuscaRequest, db: Session = Depends(g
     ).first()
     
     if not cliente:
-        logger.warning(f"?????? Cliente n??o encontrado para ve??culo ID: {veiculo.id}")
+        logger.warning(f"?????? Cliente não encontrado para veículo ID: {veiculo.id}")
         return VeiculoBuscaResponse(
             encontrado=False,
-            message="Propriet??rio do ve??culo n??o encontrado."
+            message="Proprietário do veículo não encontrado."
         )
     
-    # Buscar todos os ve??culos do cliente
+    # Buscar todos os veículos do cliente
     veiculos_cliente = db.query(Veiculo).filter(
         and_(
             Veiculo.cliente_id == cliente.id,
@@ -513,11 +572,11 @@ def buscar_produtos_autocomplete(
     limit: int = 20,
     db: Session = Depends(get_db)
 ):
-    """Buscar produtos para autocomplete na ordem de servi??o"""
+    """Buscar produtos para autocomplete na ordem de serviço"""
     query = db.query(Produto).filter(
         and_(
             Produto.ativo == True,
-            Produto.quantidade_atual > 0  # S?? produtos com estoque
+            Produto.quantidade_atual > 0  # Só produtos com estoque
         )
     )
     
@@ -538,17 +597,17 @@ def buscar_lotes_disponiveis_produto(
     produto_id: int,
     db: Session = Depends(get_db)
 ):
-    """Buscar lotes dispon??veis de um produto para venda na OS"""
+    """Buscar lotes disponíveis de um produto para venda na OS"""
     
     # Verificar se produto existe
     produto = db.query(Produto).filter(Produto.id == produto_id).first()
     if not produto:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Produto n??o encontrado"
+            detail="Produto não encontrado"
         )
     
-    # Buscar lotes com saldo dispon??vel (ordenados por FIFO)
+    # Buscar lotes com saldo disponível (ordenados por FIFO)
     lotes = db.query(LoteEstoque).filter(
         and_(
             LoteEstoque.produto_id == produto_id,
@@ -594,7 +653,7 @@ def listar_ordens_servico(
     data_fim: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Listar ordens de servi??o com filtros"""
+    """Listar ordens de serviço com filtros"""
     query = db.query(OrdemServico).options(
         joinedload(OrdemServico.cliente),
         joinedload(OrdemServico.veiculo)
@@ -612,10 +671,10 @@ def listar_ordens_servico(
     if status:
         query = query.filter(OrdemServico.status == status)
     
-    # Filtros por data: queremos filtrar pela data exibida ao usu??rio
-    # (usar data_ordem quando presente, caso contr??rio data_abertura).
-    # Al??m disso, comparar apenas a parte date para que o filtro seja
-    # inclusivo para todo o dia selecionado pelo usu??rio.
+    # Filtros por data: queremos filtrar pela data exibida ao usuário
+    # (usar data_ordem quando presente, caso contrário data_abertura).
+    # Além disso, comparar apenas a parte date para que o filtro seja
+    # inclusivo para todo o dia selecionado pelo usuário.
     expr_data = func.coalesce(func.date(OrdemServico.data_ordem), OrdemServico.data_abertura)
 
     if data_inicio:
@@ -635,7 +694,7 @@ def listar_ordens_servico(
     
     ordens = query.order_by(OrdemServico.data_abertura.desc()).offset(skip).limit(limit).all()
     
-    # Enriquecer com dados do cliente e ve??culo
+    # Enriquecer com dados do cliente e veículo
     result = []
     for ordem in ordens:
         # Usar data_ordem (DateTime) se dispon??vel, sen??o data_abertura (Date)
@@ -646,7 +705,13 @@ def listar_ordens_servico(
         valor_total = ordem.valor_total or Decimal('0.00')
         valor_custo_pecas = ordem.valor_custo_pecas or Decimal('0.00')
         valor_mao_obra_avulso = ordem.valor_mao_obra_avulso or Decimal('0.00')
-        valor_faturado_calculado = valor_total - valor_custo_pecas - valor_mao_obra_avulso
+        taxa_pagamento_aplicada = ordem.taxa_pagamento_aplicada or Decimal('0.00')
+        valor_faturado_calculado = calcular_valor_faturado_liquido(
+            valor_total=valor_total,
+            valor_custo_pecas=valor_custo_pecas,
+            valor_mao_obra_avulso=valor_mao_obra_avulso,
+            taxa_pagamento_aplicada=taxa_pagamento_aplicada,
+        )
         
         ordem_dict = {
             "id": ordem.id,
@@ -664,6 +729,7 @@ def listar_ordens_servico(
             "valor_total": ordem.valor_total,
             "valor_custo_pecas": valor_custo_pecas,  # Incluir custo das pe??as
             "valor_mao_obra_avulso": valor_mao_obra_avulso,  # Incluir m??o de obra avulsa
+            "taxa_pagamento_aplicada": taxa_pagamento_aplicada,
             "valor_faturado": valor_faturado_calculado  # Recalculado dinamicamente
         }
         result.append(OrdemServicoNovaList(**ordem_dict))
@@ -742,11 +808,12 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
     valor_subtotal_calculado = (ordem.valor_pecas or Decimal('0')) + (ordem.valor_servico or Decimal('0'))
     
     # Recalcular valor_faturado dinamicamente
-    # valor_faturado = valor_total - valor_custo_pecas - valor_mao_obra_avulso
+    # valor_faturado = valor_total - valor_custo_pecas - valor_mao_obra_avulso - taxa_pagamento_aplicada
     valor_total = ordem.valor_total or Decimal('0.00')
     valor_custo_pecas = ordem.valor_custo_pecas or Decimal('0.00')
     valor_mao_obra_avulso = ordem.valor_mao_obra_avulso or Decimal('0.00')
-    valor_faturado_calculado = valor_total - valor_custo_pecas - valor_mao_obra_avulso
+    taxa_pagamento_aplicada = ordem.taxa_pagamento_aplicada or Decimal('0.00')
+    valor_faturado_calculado = valor_total - valor_custo_pecas - valor_mao_obra_avulso - taxa_pagamento_aplicada
     
     response_data = {
         "id": ordem.id,
@@ -835,31 +902,35 @@ def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem], movimentos_
             # Tentar calcular o custo real das pe??as
             custo_item = Decimal('0.00')
             
-            logger.info(f"???? Processando item: produto_id={item.produto_id}, quantidade={item.quantidade}, tipo={item.tipo}")
+            logger.info(f"📦 Processando item: produto_id={item.produto_id}, quantidade={item.quantidade}, tipo={item.tipo}")
             
-            # Se h?? movimentos de estoque (ordem j?? foi processada), usar aqueles
+            # Se há movimentos de estoque (ordem já foi processada), usar o saldo líquido
             if movimentos_estoque:
-                logger.info(f"  ??? Buscando custo via movimentos de estoque")
-                for movimento in movimentos_estoque:
-                    if (movimento.item_id == item.produto_id and 
-                        movimento.tipo == "SAIDA" and 
-                        movimento.ordem_servico_id is not None):
-                        # Usar preco_custo do movimento se dispon??vel (custo FIFO)
-                        if movimento.preco_custo:
-                            custo_item += Decimal(str(movimento.preco_custo)) * Decimal(str(movimento.quantidade))
-                        else:
-                            # Fallback: usar preco_unitario se preco_custo n??o est?? dispon??vel
-                            custo_item += Decimal(str(movimento.preco_unitario or 0)) * Decimal(str(movimento.quantidade or 0))
-            # Se est?? criando ordem nova e temos db, calcular via FIFO
+                logger.info(f"  ✅ Buscando custo líquido via movimentos de estoque")
+                custo_item = calcular_custo_ativo_movimentos(movimentos_estoque, item.produto_id)
+            # Se está criando ordem nova e temos db, calcular via FIFO
             elif db and item.produto_id:
-                logger.info(f"  ??? Calculando custo via FIFO (ordem nova)")
+                logger.info(f"  ✅ Calculando custo via FIFO (ordem nova)")
                 try:
                     custo_fifo = calcular_custo_lotes_fifo(db, item.produto_id, float(item.quantidade))
                     custo_item = Decimal(str(custo_fifo))
-                    logger.info(f"  ??? Custo FIFO calculado: R${custo_fifo:.2f}")
+                    logger.info(f"  ✅ Custo FIFO calculado: R${custo_fifo:.2f}")
+                    if custo_item <= 0:
+                        produto = db.query(Produto).filter(Produto.id == item.produto_id).first()
+                        if produto and produto.preco_custo:
+                            custo_item = Decimal(str(produto.preco_custo)) * Decimal(str(item.quantidade))
+                            logger.warning(f"  ✅ FIFO retornou zero; usando preco_custo do produto: R${produto.preco_custo:.2f} x {item.quantidade} = R${custo_item:.2f}")
                 except Exception as e:
-                    logger.warning(f"?????? Erro ao calcular custo FIFO para produto {item.produto_id}: {e}")
-                    custo_item = Decimal('0.00')
+                    logger.warning(f"⚠️ Erro ao calcular custo FIFO para produto {item.produto_id}: {e}")
+                    logger.warning(f"  Tentando usar preco_custo do produto como fallback...")
+                    # Fallback: usar o preco_custo do produto
+                    produto = db.query(Produto).filter(Produto.id == item.produto_id).first()
+                    if produto and produto.preco_custo:
+                        custo_item = Decimal(str(produto.preco_custo)) * Decimal(str(item.quantidade))
+                        logger.warning(f"  ✅ Usando preco_custo do produto: R${produto.preco_custo:.2f} x {item.quantidade} = R${custo_item:.2f}")
+                    else:
+                        logger.warning(f"  ❌ Nenhum custo encontrado, usando 0")
+                        custo_item = Decimal('0.00')
             
             valor_custo_pecas += custo_item
     
@@ -888,7 +959,11 @@ def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem], movimentos_
     valor_total = valor_servico + valor_venda_pecas - valor_desconto
     
     # VALOR FATURADO (lucro l??quido da loja) = Valor Total - Valor Custo Pe??as - Valor M??o de Obra Avulsa
-    valor_faturado = valor_total - valor_custo_pecas - valor_mao_obra_avulso
+    valor_faturado = calcular_valor_faturado_liquido(
+        valor_total=valor_total,
+        valor_custo_pecas=valor_custo_pecas,
+        valor_mao_obra_avulso=valor_mao_obra_avulso,
+    )
     
     return {
         'valor_pecas': valor_venda_pecas,  # Valor de VENDA das pe??as
@@ -1611,18 +1686,17 @@ def atualizar_ordem_servico(
     # Recalcular valores da ordem com itens atualizados
     try:
         itens_da_ordem = db.query(ItemOrdem).filter(ItemOrdem.ordem_id == ordem.id).all()
-        # Buscar APENAS movimentos de SAIDA (n??o de ENTRADA/devolu????o)
-        # Os movimentos de SAIDA t??m o preco_custo calculado via FIFO com base nos lotes consumidos
-        movimentos_saida = db.query(MovimentoEstoque).filter(
-            and_(MovimentoEstoque.ordem_servico_id == ordem.id, MovimentoEstoque.tipo == "SAIDA")
-        ).all()
+        # Buscar todos os movimentos da OS para calcular o custo ativo líquido após devoluções
+        movimentos_ordem = db.query(MovimentoEstoque).filter(
+            MovimentoEstoque.ordem_servico_id == ordem.id
+        ).order_by(MovimentoEstoque.id.asc()).all()
         ordem_dict = {
             'valor_servico': ordem.valor_servico or Decimal('0.00'),
             'percentual_desconto': ordem.percentual_desconto or Decimal('0.00'),
             'tipo_desconto': ordem.tipo_desconto or 'TOTAL',
             'valor_mao_obra_avulso': ordem.valor_mao_obra_avulso or Decimal('0.00')
         }
-        valores = calcular_valores_ordem(ordem_dict, itens_da_ordem, movimentos_saida)
+        valores = calcular_valores_ordem(ordem_dict, itens_da_ordem, movimentos_ordem)
 
         ordem.valor_pecas = valores['valor_pecas']
         ordem.valor_servico = valores['valor_servico']
@@ -1634,6 +1708,8 @@ def atualizar_ordem_servico(
         ordem.valor_faturado = valores['valor_faturado']
         ordem.valor_mao_obra = ordem.valor_servico
         ordem.desconto = ordem.valor_desconto
+        if ordem.status == "CONCLUIDA" and ordem.forma_pagamento:
+            aplicar_taxa_pagamento(db, ordem, ordem.maquina_id)
     except Exception:
         # Se algo falhar na recalcula????o, registrar exce????o
         logger.exception(f"Erro ao recalcular valores da ordem {ordem.id}")

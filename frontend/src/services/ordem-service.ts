@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api'
 import type { 
   OrdemServicoNova, 
+  OrdemServicoAtualizacao,
   OrdemServicoList,
   ClienteBuscaResponse,
   ClienteCadastroForm,
@@ -78,7 +79,7 @@ export async function obterOrdem(id: number): Promise<OrdemServicoNova> {
   return apiFetch(`/ordens/${id}`)
 }
 
-export async function atualizarOrdem(id: number, dados: Partial<OrdemServicoNova>): Promise<OrdemServicoNova> {
+export async function atualizarOrdem(id: number, dados: OrdemServicoAtualizacao): Promise<OrdemServicoNova> {
   return apiFetch(`/ordens/${id}`, {
     method: 'PUT',
     headers: {

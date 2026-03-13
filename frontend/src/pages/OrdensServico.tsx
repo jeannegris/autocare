@@ -433,12 +433,15 @@ export default function OrdensServicoNova() {
       
       // Adicionar dados de forma de pagamento se fornecidos
       if (statusData) {
-        if (statusData.forma_pagamento) {
+          if (statusData.forma_pagamento) {
           payload.forma_pagamento = statusData.forma_pagamento;
         }
-        if (statusData.numero_parcelas) {
+          if (statusData.numero_parcelas !== undefined) {
           payload.numero_parcelas = statusData.numero_parcelas;
         }
+          if (statusData.maquina_id !== undefined) {
+            payload.maquina_id = statusData.maquina_id;
+          }
       }
       
       atualizarStatusMutation.mutate({ id: ordemSelecionada, ...payload }, {

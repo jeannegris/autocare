@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { OrdemServicoNova } from '@/types/ordem-servico'
+import type { OrdemServicoAtualizacao } from '@/types/ordem-servico'
 import * as ordemService from '@/services/ordem-service'
 
 // ============= QUERY KEYS =============
@@ -85,7 +85,7 @@ export function useAtualizarOrdem() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: ({ id, dados }: { id: number; dados: Partial<OrdemServicoNova> }) =>
+    mutationFn: ({ id, dados }: { id: number; dados: OrdemServicoAtualizacao }) =>
       ordemService.atualizarOrdem(id, dados),
     onSuccess: (_, variables) => {
       // Invalidar dados específicos da ordem e listas
@@ -100,8 +100,31 @@ export function useAtualizarStatusOrdem() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: ({ id, status, motivo_cancelamento }: { id: number; status: string; motivo_cancelamento?: string }) =>
-      ordemService.atualizarOrdem(id, { status, motivo_cancelamento }),
+    mutationFn: ({
+      id,
+      status,
+      motivo_cancelamento,
+      forma_pagamento,
+      numero_parcelas,
+      maquina_id,
+    }: {
+      id: number
+      status: string
+      motivo_cancelamento?: string
+      forma_pagamento?: string
+      numero_parcelas?: number
+      maquina_id?: number
+    }) => {
+      const dados: OrdemServicoAtualizacao = {
+        status,
+        motivo_cancelamento,
+        forma_pagamento,
+        numero_parcelas,
+        maquina_id,
+      }
+
+      return ordemService.atualizarOrdem(id, dados)
+    },
     onSuccess: (_, variables) => {
       // Invalidar dados específicos da ordem e listas
       queryClient.invalidateQueries({ queryKey: ordemQueryKeys.detail(variables.id) })
