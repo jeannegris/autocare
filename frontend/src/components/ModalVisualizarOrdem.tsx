@@ -22,6 +22,31 @@ const STATUS_OPTIONS = [
   { value: 'CANCELADA', label: 'Cancelada', color: 'text-red-700 bg-red-100' },
 ];
 
+const STATUS_ALIAS: Record<string, string> = {
+  PENDENTE: 'PENDENTE',
+  EMANDAMENTO: 'EM_ANDAMENTO',
+  AGUARDANDOPECA: 'AGUARDANDO_PECA',
+  AGUARDANDOPEA: 'AGUARDANDO_PECA',
+  AGUARDANDOAPROVACAO: 'AGUARDANDO_APROVACAO',
+  AGUARDANDOAPROVAAO: 'AGUARDANDO_APROVACAO',
+  CONCLUIDA: 'CONCLUIDA',
+  CONCLUDA: 'CONCLUIDA',
+  CONCLUADA: 'CONCLUIDA',
+  CANCELADA: 'CANCELADA',
+};
+
+const normalizeStatusValue = (status?: string | null) => {
+  if (!status) return 'PENDENTE';
+
+  const statusKey = status
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z]+/g, '')
+    .toUpperCase();
+
+  return STATUS_ALIAS[statusKey] || status.toUpperCase().replace(/\s+/g, '_');
+};
+
 const TIPOS_ORDEM = {
   'VENDA': 'Venda',
   'SERVICO': 'Serviço',
@@ -34,14 +59,14 @@ export default function ModalVisualizarOrdem({
   ordem,
   onChangeStatus 
 }: ModalVisualizarOrdemProps) {
-  const [novoStatus, setNovoStatus] = useState(ordem?.status || '');
+  const [novoStatus, setNovoStatus] = useState(normalizeStatusValue(ordem?.status));
   const [modalCancelamentoAberto, setModalCancelamentoAberto] = useState(false);
   const [modalFormaPagamentoAberto, setModalFormaPagamentoAberto] = useState(false);
 
   // Sincronizar novoStatus quando a ordem for atualizada
   useEffect(() => {
     if (ordem?.status) {
-      setNovoStatus(ordem.status);
+      setNovoStatus(normalizeStatusValue(ordem.status));
     }
   }, [ordem?.status]);
 
@@ -56,11 +81,11 @@ export default function ModalVisualizarOrdem({
   };
 
   const getStatusInfo = (status: string) => {
-    return STATUS_OPTIONS.find(s => s.value === status) || STATUS_OPTIONS[0];
+    return STATUS_OPTIONS.find(s => s.value === normalizeStatusValue(status)) || STATUS_OPTIONS[0];
   };
 
   const handleStatusChange = () => {
-    if (!onChangeStatus || novoStatus === ordem.status) return;
+    if (!onChangeStatus || novoStatus === normalizeStatusValue(ordem.status)) return;
 
     // Se o novo status for CANCELADA, abrir modal para capturar motivo
     if (novoStatus === 'CANCELADA') {
@@ -97,7 +122,7 @@ export default function ModalVisualizarOrdem({
 
   const handleFecharModalFormaPagamento = () => {
     // Reverter o select para o status anterior
-    setNovoStatus(ordem?.status || '');
+    setNovoStatus(normalizeStatusValue(ordem?.status));
     setModalFormaPagamentoAberto(false);
   };
 
@@ -110,7 +135,7 @@ export default function ModalVisualizarOrdem({
 
   const handleFecharModalCancelamento = () => {
     // Reverter o select para o status anterior
-    setNovoStatus(ordem?.status || '');
+    setNovoStatus(normalizeStatusValue(ordem?.status));
     setModalCancelamentoAberto(false);
   };
 
@@ -582,6 +607,34 @@ export default function ModalVisualizarOrdem({
                 </div>
               </div>
             </div>
+
+            {/* Forma de Pagamento - Mostrar apenas se status for CONCLUIDA e forma_pagamento estiver preenchida */}
+            {ordem.forma_pagamento && (
+              <div className="bg-white border rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Forma de Pagamento
+                </h4>
+                
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-gray-600">Método:</span>
+                    <p className="font-medium mt-1">
+                      {ordem.forma_pagamento === 'DINHEIRO' && 'Dinheiro'}
+                      {ordem.forma_pagamento === 'PIX' && 'PIX'}
+                      {ordem.forma_pagamento === 'DEBITO' && 'Débito'}
+                      {ordem.forma_pagamento === 'CREDITO' && 'Crédito'}
+                    </p>
+                  </div>
+                  {ordem.forma_pagamento === 'CREDITO' && ordem.numero_parcelas && (
+                    <div>
+                      <span className="text-gray-600">Parcelamento:</span>
+                      <p className="font-medium mt-1">{ordem.numero_parcelas} parcela{ordem.numero_parcelas > 1 ? 's' : ''}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Informações do Cliente */}
             <div className="bg-white border rounded-lg p-4">

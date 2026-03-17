@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { 
   Plus, 
   Search, 
@@ -52,11 +53,34 @@ const STATUS_OPTIONS = [
   { value: 'CANCELADA', label: 'Cancelada' }
 ];
 
-;
+const STATUS_ALIAS: Record<string, string> = {
+  PENDENTE: 'PENDENTE',
+  EMANDAMENTO: 'EM_ANDAMENTO',
+  AGUARDANDOPECA: 'AGUARDANDO_PECA',
+  AGUARDANDOPEA: 'AGUARDANDO_PECA',
+  AGUARDANDOAPROVACAO: 'AGUARDANDO_APROVACAO',
+  AGUARDANDOAPROVAAO: 'AGUARDANDO_APROVACAO',
+  CONCLUIDA: 'CONCLUIDA',
+  CONCLUDA: 'CONCLUIDA',
+  CONCLUADA: 'CONCLUIDA',
+  CANCELADA: 'CANCELADA',
+};
+
+const normalizeStatusValue = (status?: string | null) => {
+  if (!status) return '';
+
+  const statusKey = status
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z]+/g, '')
+    .toUpperCase();
+
+  return STATUS_ALIAS[statusKey] || status.toUpperCase().replace(/\s+/g, '_');
+};
 
 // Função para obter cor do status
 const getStatusColor = (status: string) => {
-  switch (status) {
+  switch (normalizeStatusValue(status)) {
     case 'PENDENTE':
       return 'bg-yellow-100 text-yellow-800';
     case 'EM_ANDAMENTO':
@@ -76,7 +100,7 @@ const getStatusColor = (status: string) => {
 
 // Função para obter ícone do status
 const getStatusIcon = (status: string) => {
-  switch (status) {
+  switch (normalizeStatusValue(status)) {
     case 'PENDENTE':
       return <Clock className="h-4 w-4" />;
     case 'EM_ANDAMENTO':
@@ -95,6 +119,11 @@ const getStatusIcon = (status: string) => {
 };
 
 export default function OrdensServicoNova() {
+  const [tooltipValorFaturado, setTooltipValorFaturado] = useState<{
+    ordem: OrdemServicoList;
+    left: number;
+    top: number;
+  } | null>(null);
   const [filtros, setFiltros] = useState({
     search: '',
     status: '',
@@ -483,6 +512,48 @@ export default function OrdensServicoNova() {
     }
   };
 
+  const formatarMoeda = (valor?: string | number | null) => {
+    return `R$ ${parseFloat(String(valor || 0)).toFixed(2).replace('.', ',')}`;
+  };
+
+  const calcularValorCliente = (ordem: OrdemServicoList) => {
+    const valorServico = parseFloat(String(ordem.valor_servico || 0));
+    const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
+    const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
+    return valorServico + valorPecas - valorDesconto;
+  };
+
+  const abrirTooltipValorFaturado = (ordem: OrdemServicoList, element: HTMLDivElement) => {
+    const rect = element.getBoundingClientRect();
+    setTooltipValorFaturado({
+      ordem,
+      left: rect.left + rect.width / 2,
+      top: rect.top - 8,
+    });
+  };
+
+  const fecharTooltipValorFaturado = () => {
+    setTooltipValorFaturado(null);
+  };
+
+  useEffect(() => {
+    if (!tooltipValorFaturado) {
+      return;
+    }
+
+    const handleViewportChange = () => {
+      setTooltipValorFaturado(null);
+    };
+
+    window.addEventListener('scroll', handleViewportChange, true);
+    window.addEventListener('resize', handleViewportChange);
+
+    return () => {
+      window.removeEventListener('scroll', handleViewportChange, true);
+      window.removeEventListener('resize', handleViewportChange);
+    };
+  }, [tooltipValorFaturado]);
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
@@ -668,7 +739,7 @@ export default function OrdensServicoNova() {
       </div>
 
       {/* Lista de Ordens */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-visible">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -694,7 +765,7 @@ export default function OrdensServicoNova() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto overflow-y-visible">
             <table ref={tableRef} className="min-w-full divide-y divide-gray-200" style={{ tableLayout: 'fixed' }}>
               {/* Colgroup para aplicar largura em TODA a coluna (thead + tbody) */}
               <colgroup>
@@ -986,7 +1057,7 @@ export default function OrdensServicoNova() {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(ordem.status)}`}>
                         {getStatusIcon(ordem.status)}
                         <span className="ml-1">
-                          {STATUS_OPTIONS.find(s => s.value === ordem.status)?.label || ordem.status}
+                          {STATUS_OPTIONS.find(s => s.value === normalizeStatusValue(ordem.status))?.label || ordem.status}
                         </span>
                       </span>
                     </td>
@@ -1013,24 +1084,13 @@ export default function OrdensServicoNova() {
                     </td>
 
                     <td className="px-6 py-4 text-center">
-                      <div className="relative group">
+                      <div
+                        className="inline-flex"
+                        onMouseEnter={(e) => abrirTooltipValorFaturado(ordem, e.currentTarget)}
+                        onMouseLeave={fecharTooltipValorFaturado}
+                      >
                         <div className="text-sm font-medium text-green-600 cursor-help">
-                          R$ {parseFloat(String(ordem.valor_faturado || 0)).toFixed(2).replace('.', ',')}
-                        </div>
-                        
-                        {/* Tooltip */}
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                          <div className="mb-1 font-semibold">Detalhamento do Valor Faturado:</div>
-                          <div>Valor Cliente: R$ {(() => {
-                            const valorServico = parseFloat(String(ordem.valor_servico || 0));
-                            const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
-                            const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
-                            return (valorServico + valorPecas - valorDesconto).toFixed(2).replace('.', ',');
-                          })()}</div>
-                          <div>Custo Peças: -R$ {parseFloat(String(ordem.valor_custo_pecas || 0)).toFixed(2).replace('.', ',')}</div>
-                          <div>Mão de Obra Avulsa: -R$ {parseFloat(String(ordem.valor_mao_obra_avulso || 0)).toFixed(2).replace('.', ',')}</div>
-                          <div>Taxa Máquina: -R$ {parseFloat(String(ordem.taxa_pagamento_aplicada || 0)).toFixed(2).replace('.', ',')}</div>
-                          <div className="border-t border-gray-500 mt-1 pt-1 font-semibold">Valor Faturado: R$ {parseFloat(String(ordem.valor_faturado || 0)).toFixed(2).replace('.', ',')}</div>
+                          {formatarMoeda(ordem.valor_faturado)}
                         </div>
                       </div>
                     </td>
@@ -1069,6 +1129,25 @@ export default function OrdensServicoNova() {
           </div>
         )}
       </div>
+
+      {tooltipValorFaturado && ReactDOM.createPortal(
+        <div
+          className="fixed z-[9999] w-max max-w-xs rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-2xl pointer-events-none"
+          style={{
+            left: tooltipValorFaturado.left,
+            top: tooltipValorFaturado.top,
+            transform: 'translate(-50%, -100%)'
+          }}
+        >
+          <div className="mb-1 font-semibold">Detalhamento do Valor Faturado:</div>
+          <div>Valor Cliente: {formatarMoeda(calcularValorCliente(tooltipValorFaturado.ordem))}</div>
+          <div>Custo Peças: -{formatarMoeda(tooltipValorFaturado.ordem.valor_custo_pecas)}</div>
+          <div>Mão de Obra Avulsa: -{formatarMoeda(tooltipValorFaturado.ordem.valor_mao_obra_avulso)}</div>
+          <div>Taxa Máquina: -{formatarMoeda(tooltipValorFaturado.ordem.taxa_pagamento_aplicada)}</div>
+          <div className="mt-1 border-t border-gray-500 pt-1 font-semibold">Valor Faturado: {formatarMoeda(tooltipValorFaturado.ordem.valor_faturado)}</div>
+        </div>,
+        document.body
+      )}
 
       {/* Modals */}
       <ModalBuscaClienteVeiculo

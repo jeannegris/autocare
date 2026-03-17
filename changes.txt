@@ -1,8 +1,7 @@
  M backend/routes/autocare_ordens.py
+ M backend/schemas/schemas_ordem.py
  M backup_log.txt
  M changes.txt
- M frontend/src/components/ModalFormaPagamento.tsx
- M frontend/src/hooks/useOrdens.ts
+ M frontend/src/components/ModalEditarOrdem.tsx
+ M frontend/src/components/ModalVisualizarOrdem.tsx
  M frontend/src/pages/OrdensServico.tsx
- M frontend/src/services/ordem-service.ts
- M frontend/src/types/ordem-servico.ts

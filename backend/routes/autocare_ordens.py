@@ -4,8 +4,11 @@ from sqlalchemy import and_, func, or_
 from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime, date
+from difflib import get_close_matches
+import re
 import pytz
 import logging
+import unicodedata
 from db import get_db
 from models.autocare_models import OrdemServico, ItemOrdem, Cliente, Veiculo, Produto, MovimentoEstoque, LoteEstoque, ManutencaoHistorico, TaxaPagamento, Maquina
 from schemas.schemas_ordem import (
@@ -26,6 +29,77 @@ from fastapi import Request
 from pydantic import ValidationError
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+def status_ordem_chave(status_value: str) -> str:
+    status_ascii = unicodedata.normalize("NFKD", status_value)
+    status_ascii = status_ascii.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^A-Z]+", "", status_ascii.upper())
+
+
+STATUS_ORDEM_DEFINICOES = {
+    "PENDENTE": ["PENDENTE", "Pendente"],
+    "EM_ANDAMENTO": ["EM_ANDAMENTO", "EM ANDAMENTO", "EMANDAMENTO", "Em andamento", "Em Andamento"],
+    "AGUARDANDO_PECA": [
+        "AGUARDANDO_PECA",
+        "AGUARDANDO PECA",
+        "AGUARDANDOPECA",
+        "AGUARDANDO PEA",
+        "AGUARDANDOPEA",
+        "Aguardando peça",
+        "Aguardando peca",
+    ],
+    "AGUARDANDO_APROVACAO": [
+        "AGUARDANDO_APROVACAO",
+        "AGUARDANDO APROVACAO",
+        "AGUARDANDOAPROVACAO",
+        "AGUARDANDO APROVAAO",
+        "AGUARDANDOAPROVAAO",
+        "Aguardando aprovação",
+        "Aguardando aprovacao",
+    ],
+    "CONCLUIDA": ["CONCLUIDA", "Concluída", "Concluida", "CONCLUDA", "CONCLUADA", "Conclu?da"],
+    "CANCELADA": ["CANCELADA", "Cancelada"],
+}
+
+STATUS_ORDEM_VARIANTES = {
+    status_canonico: sorted(set(variantes))
+    for status_canonico, variantes in STATUS_ORDEM_DEFINICOES.items()
+}
+
+STATUS_ORDEM_ALIAS = {
+    status_ordem_chave(variante): status_canonico
+    for status_canonico, variantes in STATUS_ORDEM_VARIANTES.items()
+    for variante in variantes
+}
+
+
+def normalizar_status_ordem(status_value: Optional[str]) -> Optional[str]:
+    if status_value is None:
+        return None
+
+    status_texto = str(status_value).strip()
+    if not status_texto:
+        return None
+
+    status_chave = status_ordem_chave(status_texto)
+    status_canonico = STATUS_ORDEM_ALIAS.get(status_chave)
+    if status_canonico:
+        return status_canonico
+
+    status_aproximado = get_close_matches(status_chave, STATUS_ORDEM_ALIAS.keys(), n=1, cutoff=0.75)
+    if status_aproximado:
+        return STATUS_ORDEM_ALIAS[status_aproximado[0]]
+
+    return status_texto.upper().replace(" ", "_")
+
+
+def filtro_status_ordem(coluna, *status_canonicos: str):
+    variantes = []
+    for status_canonico in status_canonicos:
+        status_normalizado = normalizar_status_ordem(status_canonico) or status_canonico
+        variantes.extend(STATUS_ORDEM_VARIANTES.get(status_normalizado, [status_normalizado]))
+
+    return coluna.in_(sorted(set(variantes)))
 
 def gerar_numero_ordem(db: Session) -> str:
     """Gerar pr??ximo n??mero de ordem sequencial"""
@@ -73,6 +147,24 @@ def obter_taxa_pagamento(db: Session, tipo_pagamento: Optional[str], maquina_id:
             return maquina_default.taxa_debito
         elif tipo_pagamento_upper == 'CREDITO':
             return maquina_default.taxa_credito
+
+    return Decimal('0.00')
+
+
+def obter_taxa_pagamento_aplicada(ordem: OrdemServico, db: Session) -> Decimal:
+    taxa_aplicada = Decimal(str(ordem.taxa_pagamento_aplicada or 0))
+    if taxa_aplicada > 0:
+        return taxa_aplicada
+
+    if normalizar_status_ordem(ordem.status) != "CONCLUIDA" or not ordem.forma_pagamento:
+        return taxa_aplicada
+
+    percentual_taxa = obter_taxa_pagamento(db, ordem.forma_pagamento, ordem.maquina_id)
+    if percentual_taxa <= 0:
+        return taxa_aplicada
+
+    valor_base = Decimal(str(ordem.valor_total or 0))
+    return (valor_base * (percentual_taxa / Decimal('100'))).quantize(Decimal('0.01'))
     
     return Decimal('0.00')
 
@@ -135,7 +227,7 @@ def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optiona
     Returns:
         Valor da taxa aplicada
     """
-    if ordem.status != "CONCLUIDA" or not ordem.forma_pagamento:
+    if normalizar_status_ordem(ordem.status) != "CONCLUIDA" or not ordem.forma_pagamento:
         return Decimal('0.00')
     
     # Se não forneceu máquina, usar a padrão
@@ -669,7 +761,9 @@ def listar_ordens_servico(
         query = query.filter(OrdemServico.tipo_ordem == tipo_ordem)
     
     if status:
-        query = query.filter(OrdemServico.status == status)
+        status_normalizado = normalizar_status_ordem(status)
+        if status_normalizado:
+            query = query.filter(filtro_status_ordem(OrdemServico.status, status_normalizado))
     
     # Filtros por data: queremos filtrar pela data exibida ao usuário
     # (usar data_ordem quando presente, caso contrário data_abertura).
@@ -705,7 +799,7 @@ def listar_ordens_servico(
         valor_total = ordem.valor_total or Decimal('0.00')
         valor_custo_pecas = ordem.valor_custo_pecas or Decimal('0.00')
         valor_mao_obra_avulso = ordem.valor_mao_obra_avulso or Decimal('0.00')
-        taxa_pagamento_aplicada = ordem.taxa_pagamento_aplicada or Decimal('0.00')
+        taxa_pagamento_aplicada = obter_taxa_pagamento_aplicada(ordem, db)
         valor_faturado_calculado = calcular_valor_faturado_liquido(
             valor_total=valor_total,
             valor_custo_pecas=valor_custo_pecas,
@@ -722,7 +816,7 @@ def listar_ordens_servico(
             "veiculo_placa": ordem.veiculo.placa if ordem.veiculo else None,
             "tipo_ordem": ordem.tipo_ordem,
             "data_abertura": data_ordem_completa,  # Usar data_ordem com hora completa
-            "status": ordem.status,
+            "status": normalizar_status_ordem(ordem.status) or ordem.status,
             "valor_servico": ordem.valor_servico,
             "valor_pecas": ordem.valor_pecas,
             "valor_desconto": ordem.valor_desconto,
@@ -742,12 +836,12 @@ def obter_estatisticas_ordens(db: Session = Depends(get_db)):
     try:
         # Contar por status
         total = db.query(OrdemServico).count()
-        pendentes = db.query(OrdemServico).filter(OrdemServico.status == "PENDENTE").count()
-        em_andamento = db.query(OrdemServico).filter(OrdemServico.status == "EM_ANDAMENTO").count()
-        aguardando_peca = db.query(OrdemServico).filter(OrdemServico.status == "AGUARDANDO_PECA").count()
-        aguardando_aprovacao = db.query(OrdemServico).filter(OrdemServico.status == "AGUARDANDO_APROVACAO").count()
-        concluidas = db.query(OrdemServico).filter(OrdemServico.status == "CONCLUIDA").count()
-        canceladas = db.query(OrdemServico).filter(OrdemServico.status == "CANCELADA").count()
+        pendentes = db.query(OrdemServico).filter(filtro_status_ordem(OrdemServico.status, "PENDENTE")).count()
+        em_andamento = db.query(OrdemServico).filter(filtro_status_ordem(OrdemServico.status, "EM_ANDAMENTO")).count()
+        aguardando_peca = db.query(OrdemServico).filter(filtro_status_ordem(OrdemServico.status, "AGUARDANDO_PECA")).count()
+        aguardando_aprovacao = db.query(OrdemServico).filter(filtro_status_ordem(OrdemServico.status, "AGUARDANDO_APROVACAO")).count()
+        concluidas = db.query(OrdemServico).filter(filtro_status_ordem(OrdemServico.status, "CONCLUIDA")).count()
+        canceladas = db.query(OrdemServico).filter(filtro_status_ordem(OrdemServico.status, "CANCELADA")).count()
         
         # Calcular valores
         resultado_valor_total = db.query(
@@ -757,7 +851,7 @@ def obter_estatisticas_ordens(db: Session = Depends(get_db)):
         resultado_valor_mes = db.query(
             func.coalesce(func.sum(OrdemServico.valor_total), 0)
         ).filter(
-            OrdemServico.status == "CONCLUIDA",
+            filtro_status_ordem(OrdemServico.status, "CONCLUIDA"),
             func.extract('month', OrdemServico.created_at) == func.extract('month', func.now()),
             func.extract('year', OrdemServico.created_at) == func.extract('year', func.now())
         ).scalar()
@@ -812,7 +906,7 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
     valor_total = ordem.valor_total or Decimal('0.00')
     valor_custo_pecas = ordem.valor_custo_pecas or Decimal('0.00')
     valor_mao_obra_avulso = ordem.valor_mao_obra_avulso or Decimal('0.00')
-    taxa_pagamento_aplicada = ordem.taxa_pagamento_aplicada or Decimal('0.00')
+    taxa_pagamento_aplicada = obter_taxa_pagamento_aplicada(ordem, db)
     valor_faturado_calculado = valor_total - valor_custo_pecas - valor_mao_obra_avulso - taxa_pagamento_aplicada
     
     response_data = {
@@ -831,7 +925,7 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
         "tipo_desconto": ordem.tipo_desconto or 'TOTAL',  # Evitar None
         "observacoes": ordem.observacoes,
         "funcionario_responsavel": ordem.funcionario_responsavel,
-        "status": ordem.status,
+        "status": normalizar_status_ordem(ordem.status) or ordem.status,
         "data_abertura": ordem.data_abertura,
         "data_conclusao": ordem.data_conclusao,
         "valor_pecas": ordem.valor_pecas,
@@ -1053,6 +1147,8 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         # Normaliza????o adicional: converter veiculo_id == 0 para None
         if ordem_dict.get('veiculo_id') in (0, '0'):
             ordem_dict['veiculo_id'] = None
+        if ordem_dict.get('status'):
+            ordem_dict['status'] = normalizar_status_ordem(ordem_dict.get('status'))
         # Remover campos que s??o properties somente leitura
         ordem_dict.pop('tempo_estimado_horas', None)
         ordem_dict.pop('tempo_gasto_horas', None)
@@ -1253,7 +1349,9 @@ def atualizar_ordem_servico(
     
     # Atualizar apenas campos n??o nulos (exceto itens que ser??o tratados separadamente)
     # Guardar status anterior para detectar transi????o corretamente
-    previous_status = ordem.status
+    previous_status = normalizar_status_ordem(ordem.status) or ordem.status
+    if ordem.status != previous_status:
+        ordem.status = previous_status
     update_data = ordem_data.dict(exclude_unset=True)
     itens_payload = update_data.pop('itens', None)
 
@@ -1261,8 +1359,11 @@ def atualizar_ordem_servico(
     if 'veiculo_id' in update_data and update_data.get('veiculo_id') in (0, '0'):
         update_data['veiculo_id'] = None
 
+    if 'status' in update_data and update_data.get('status') is not None:
+        update_data['status'] = normalizar_status_ordem(update_data.get('status'))
+
     # Validar se status est?? mudando para CANCELADA e motivo_cancelamento foi fornecido
-    novo_status = update_data.get('status', ordem.status)
+    novo_status = normalizar_status_ordem(update_data.get('status', ordem.status)) or ordem.status
     if novo_status == "CANCELADA" and previous_status != "CANCELADA":
         motivo = update_data.get('motivo_cancelamento')
         if not motivo or not motivo.strip():
@@ -1359,10 +1460,10 @@ def atualizar_ordem_servico(
                 db.flush()
                 novos_itens_objs.append(novo)
 
-        # Deletar itens que n??o vieram no payload (nova quantidade 0)
+        # Deletar itens que não vieram no payload (nova quantidade 0)
         for existing_id, existing_obj in itens_existentes.items():
             if existing_id not in ids_recebidos:
-                # Se a ordem j?? tinha baixa aplicada, precisamos devolver a quantidade anterior ao estoque
+                # Se a ordem já tinha baixa aplicada, precisamos devolver a quantidade anterior ao estoque
                 if previous_status in ["CONCLUIDA", "EM_ANDAMENTO"] and quantidades_anteriores.get(existing_id, 0) > 0:
                     produto = db.query(Produto).filter(Produto.id == existing_obj.produto_id).first()
                     if produto:
@@ -1381,7 +1482,7 @@ def atualizar_ordem_servico(
                         )
                         db.add(movimento)
                         produto.quantidade_atual += qtd_devolver
-                        # Status do produto ?? calculado automaticamente pela property
+                        # Status do produto é calculado automaticamente pela property
 
                 db.delete(existing_obj)
 
@@ -1390,41 +1491,43 @@ def atualizar_ordem_servico(
         db.refresh(ordem)
     
     # ========================================
-    # L??GICA DE MOVIMENTA????O DE ESTOQUE
+    # LÓGICA DE MOVIMENTAÇÃO DE ESTOQUE
     # ========================================
     # 
     # REGRAS:
     # 1. Status EM_ANDAMENTO ou CONCLUIDA: cria movimento de SAIDA (baixa estoque)
-    # 2. Mudan??a DE (EM_ANDAMENTO/CONCLUIDA) PARA (PENDENTE/AGUARDANDO_*/CANCELADA): cria movimento de ENTRADA (devolu????o)
-    # 3. Status CANCELADA: al??m da devolu????o, exige motivo_cancelamento
+    # 2. Mudança DE (EM_ANDAMENTO/CONCLUIDA) PARA (PENDENTE/AGUARDANDO_*/CANCELADA): cria movimento de ENTRADA (devolução)
+    # 3. Status CANCELADA: além da devolução, exige motivo_cancelamento
     #
-    # FLUXOS POSS??VEIS:
-    # - PENDENTE ??? EM_ANDAMENTO: cria SAIDA
-    # - EM_ANDAMENTO ??? CONCLUIDA: mant??m SAIDA (j?? aplicada)
-    # - EM_ANDAMENTO ??? PENDENTE: cria ENTRADA (devolu????o)
-    # - EM_ANDAMENTO ??? CANCELADA: cria ENTRADA (devolu????o) + registra motivo
-    # - CONCLUIDA ??? CANCELADA: cria ENTRADA (devolu????o) + registra motivo
+    # FLUXOS POSSÍVEIS:
+    # - PENDENTE → EM_ANDAMENTO: cria SAIDA
+    # - EM_ANDAMENTO → CONCLUIDA: mantém SAIDA (já aplicada)
+    # - EM_ANDAMENTO → PENDENTE: cria ENTRADA (devolução)
+    # - EM_ANDAMENTO → CANCELADA: cria ENTRADA (devolução) + registra motivo
+    # - CONCLUIDA → CANCELADA: cria ENTRADA (devolução) + registra motivo
     #
     # ========================================
     
-    # Baixa de estoque ??? dois casos:
-    # 1) Transi????o para CONCLUIDA/EM_ANDAMENTO (anteriormente n??o estava) -> baixa completa da quantidade atual dos itens
-    # 2) Ordem j?? estava em CONCLUIDA/EM_ANDAMENTO e itens foram alterados -> aplicar apenas o delta (novo - antigo). Se delta>0 criar SAIDA, delta<0 criar ENTRADA
-    novo_status = ordem.status
+    # Baixa de estoque — dois casos:
+    # 1) Transição para CONCLUIDA/EM_ANDAMENTO (anteriormente não estava) -> baixa completa da quantidade atual dos itens
+    # 2) Ordem já estava em CONCLUIDA/EM_ANDAMENTO e itens foram alterados -> aplicar apenas o delta (novo - antigo). Se delta>0 criar SAIDA, delta<0 criar ENTRADA
+    novo_status = normalizar_status_ordem(ordem.status) or ordem.status
+    if ordem.status != novo_status:
+        ordem.status = novo_status
     if novo_status in ["CONCLUIDA", "EM_ANDAMENTO"] and previous_status not in ["CONCLUIDA", "EM_ANDAMENTO"]:
-        # Para CONCLUIDA, atualizar data de conclus??o
+        # Para CONCLUIDA, atualizar data de conclusão
         if novo_status == "CONCLUIDA":
             ordem.data_conclusao = datetime.now()
             # Aplicar taxa de pagamento baseada na forma de pagamento e máquina selecionada
             maquina_id = update_data.get('maquina_id')
             aplicar_taxa_pagamento(db, ordem, maquina_id)
-            # Criar registro no hist??rico de manuten????es do ve??culo
+            # Criar registro no histórico de manutenções do veículo
             try:
                 criar_historico_manutencao(ordem, db)
             except Exception as e:
-                logger.error(f"Erro ao criar hist??rico de manuten????o para OS {ordem.numero}: {str(e)}")
+                logger.error(f"Erro ao criar histórico de manutenção para OS {ordem.numero}: {str(e)}")
 
-        # Baixa completa: cada item provoca sa??da igual ?? sua quantidade
+        # Baixa completa: cada item provoca saída igual à sua quantidade
         itens_produto = db.query(ItemOrdem).filter(
             and_(
                 ItemOrdem.ordem_id == ordem_id,
@@ -1436,21 +1539,21 @@ def atualizar_ordem_servico(
         for item in itens_produto:
             produto = db.query(Produto).filter(Produto.id == item.produto_id).first()
             if produto:
-                # Verificar estoque dispon??vel
+                # Verificar estoque disponível
                 if produto.quantidade_atual < item.quantidade:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Estoque insuficiente para o produto {produto.nome}"
                     )
 
-                # Criar movimento de sa??da
+                # Criar movimento de saída
                 tz = pytz.timezone('America/Sao_Paulo')
                 
-                # Consumir lotes via FIFO e obter custo m??dio
+                # Consumir lotes via FIFO e obter custo médio
                 try:
                     custo_medio = consumir_lotes_fifo(db, item.produto_id, item.quantidade)
                 except HTTPException:
-                    # Se n??o houver lotes (produtos antigos), usar custo do produto
+                    # Se não houver lotes (produtos antigos), usar custo do produto
                     custo_medio = float(produto.preco_custo) if produto.preco_custo else 0
                 
                 movimento = MovimentoEstoque(
@@ -1460,7 +1563,7 @@ def atualizar_ordem_servico(
                     preco_unitario=item.valor_unitario,
                     preco_custo=custo_medio,  # Custo real baseado nos lotes FIFO
                     valor_total=item.valor_total,
-                    motivo="Ordem de Servi??o",
+                    motivo="Ordem de Serviço",
                     observacoes=f"OS {ordem.numero} - {item.descricao} - Status: {novo_status}",
                     ordem_servico_id=ordem.id,
                     data_movimentacao=datetime.now(tz)
@@ -1469,15 +1572,15 @@ def atualizar_ordem_servico(
 
                 # Atualizar estoque do produto
                 produto.quantidade_atual -= item.quantidade
-                # Status do produto ?? calculado automaticamente pela property
+                # Status do produto é calculado automaticamente pela property
 
-          # Ordem j?? tinha baixa aplicada ??? aplicar somente delta quando itens mudaram
-        # Obter quantidades atuais ap??s atualiza????o
+          # Ordem já tinha baixa aplicada ??? aplicar somente delta quando itens mudaram
+        # Obter quantidades atuais após atualização
         itens_atualizados = db.query(ItemOrdem).filter(ItemOrdem.ordem_id == ordem.id).all()
         quantidades_novas = {it.id: it.quantidade for it in itens_atualizados}
 
-        # Mapear por produto: se item foi novo (id n??o estava em quantidades_anteriores) consideramos anterior=0
-        # Para itens deletados, quantidades_novas n??o ter?? a chave ??? tratamos como novo=0
+        # Mapear por produto: se item foi novo (id não estava em quantidades_anteriores) consideramos anterior=0
+        # Para itens deletados, quantidades_novas não ter?? a chave ??? tratamos como novo=0
         all_item_ids = set(list(quantidades_anteriores.keys()) + list(quantidades_novas.keys()))
 
         for item_id in all_item_ids:
@@ -1708,7 +1811,7 @@ def atualizar_ordem_servico(
         ordem.valor_faturado = valores['valor_faturado']
         ordem.valor_mao_obra = ordem.valor_servico
         ordem.desconto = ordem.valor_desconto
-        if ordem.status == "CONCLUIDA" and ordem.forma_pagamento:
+        if normalizar_status_ordem(ordem.status) == "CONCLUIDA" and ordem.forma_pagamento:
             aplicar_taxa_pagamento(db, ordem, ordem.maquina_id)
     except Exception:
         # Se algo falhar na recalcula????o, registrar exce????o
@@ -1735,7 +1838,7 @@ def cancelar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
             detail="Ordem de servi??o n??o encontrada"
         )
     
-    if ordem.status == "CONCLUIDA":
+    if normalizar_status_ordem(ordem.status) == "CONCLUIDA":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="N??o ?? poss??vel cancelar uma ordem de servi??o conclu??da"

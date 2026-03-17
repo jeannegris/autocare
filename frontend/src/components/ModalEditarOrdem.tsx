@@ -21,6 +21,31 @@ const STATUS_OPTIONS = [
   { value: 'CANCELADA', label: 'Cancelada' },
 ];
 
+const STATUS_ALIAS: Record<string, string> = {
+  PENDENTE: 'PENDENTE',
+  EMANDAMENTO: 'EM_ANDAMENTO',
+  AGUARDANDOPECA: 'AGUARDANDO_PECA',
+  AGUARDANDOPEA: 'AGUARDANDO_PECA',
+  AGUARDANDOAPROVACAO: 'AGUARDANDO_APROVACAO',
+  AGUARDANDOAPROVAAO: 'AGUARDANDO_APROVACAO',
+  CONCLUIDA: 'CONCLUIDA',
+  CONCLUDA: 'CONCLUIDA',
+  CONCLUADA: 'CONCLUIDA',
+  CANCELADA: 'CANCELADA',
+};
+
+const normalizeStatusValue = (status?: string | null) => {
+  if (!status) return 'PENDENTE';
+
+  const statusKey = status
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z]+/g, '')
+    .toUpperCase();
+
+  return STATUS_ALIAS[statusKey] || status.toUpperCase().replace(/\s+/g, '_');
+};
+
 const TIPOS_ORDEM = [
   { value: 'VENDA', label: 'Vendas', description: 'Apenas Vendas' },
   { value: 'SERVICO', label: 'Serviço', description: 'Apenas Serviços' },
@@ -58,7 +83,7 @@ export default function ModalEditarOrdem({
   useEffect(() => {
     if (ordem) {
       setFormData({
-        status: ordem.status || 'PENDENTE',
+        status: normalizeStatusValue(ordem.status),
         tipo_ordem: ordem.tipo_ordem,
         descricao_servico: ordem.descricao_servico || '',
         observacoes: ordem.observacoes || '',
