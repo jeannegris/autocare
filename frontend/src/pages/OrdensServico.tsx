@@ -118,6 +118,23 @@ const getStatusIcon = (status: string) => {
   }
 };
 
+const formatarFormaPagamento = (formaPagamento?: string | null) => {
+  if (!formaPagamento) return '-';
+
+  switch (formaPagamento.toUpperCase()) {
+    case 'DINHEIRO':
+      return 'Dinheiro';
+    case 'PIX':
+      return 'PIX';
+    case 'DEBITO':
+      return 'Débito';
+    case 'CREDITO':
+      return 'Crédito';
+    default:
+      return formaPagamento;
+  }
+};
+
 export default function OrdensServicoNova() {
   const [tooltipValorFaturado, setTooltipValorFaturado] = useState<{
     ordem: OrdemServicoList;
@@ -1143,6 +1160,7 @@ export default function OrdensServicoNova() {
           <div>Valor Cliente: {formatarMoeda(calcularValorCliente(tooltipValorFaturado.ordem))}</div>
           <div>Custo Peças: -{formatarMoeda(tooltipValorFaturado.ordem.valor_custo_pecas)}</div>
           <div>Mão de Obra Avulsa: -{formatarMoeda(tooltipValorFaturado.ordem.valor_mao_obra_avulso)}</div>
+          <div>Forma de Pgto.: {formatarFormaPagamento(tooltipValorFaturado.ordem.forma_pagamento)}</div>
           <div>Taxa Máquina: -{formatarMoeda(tooltipValorFaturado.ordem.taxa_pagamento_aplicada)}</div>
           <div className="mt-1 border-t border-gray-500 pt-1 font-semibold">Valor Faturado: {formatarMoeda(tooltipValorFaturado.ordem.valor_faturado)}</div>
         </div>,

@@ -1,7 +1,8 @@
  M backend/routes/autocare_ordens.py
  M backend/schemas/schemas_ordem.py
+ M backend/scripts/README.md
  M backup_log.txt
  M changes.txt
- M frontend/src/components/ModalEditarOrdem.tsx
- M frontend/src/components/ModalVisualizarOrdem.tsx
  M frontend/src/pages/OrdensServico.tsx
+?? backend/scripts/atualizar_formas_pagamento_os.py
+?? backend/scripts/ordens_pagamento.csv

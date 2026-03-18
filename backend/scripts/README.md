@@ -2,6 +2,67 @@
 
 Este diretório contém scripts para criar/ajustar as tabelas do sistema de perfis de acesso.
 
+## Atualização de Forma de Pagamento das OS
+
+Para corrigir OS antigas após a implantação da forma de pagamento, use o script [backend/scripts/atualizar_formas_pagamento_os.py](backend/scripts/atualizar_formas_pagamento_os.py).
+
+O CSV padrão já foi criado em [backend/scripts/ordens_pagamento.csv](backend/scripts/ordens_pagamento.csv).
+
+Se precisar listar todas as OS antes de preencher o CSV, use [backend/scripts/listar_os_forma_pagamento.sql](backend/scripts/listar_os_forma_pagamento.sql).
+
+### Formato do CSV
+
+```csv
+numero_os,forma_pagamento,numero_parcelas,maquina_id
+OS-0001,PIX,1,
+OS-0002,CREDITO,3,2
+OS-0003,DEBITO,1,
+```
+
+- `numero_os`: número exato da OS no banco
+- `forma_pagamento`: `DINHEIRO`, `PIX`, `DEBITO` ou `CREDITO`
+- `numero_parcelas`: opcional, usado para crédito; nos demais casos o script força `1`
+- `maquina_id`: opcional; se vazio, o script usa a máquina padrão configurada
+
+### Execução segura
+
+Antes de preencher o CSV, você pode listar ou exportar as OS existentes:
+
+```bash
+cd /var/www/autocare/backend
+psql -U autocare -d autocare -f scripts/listar_os_forma_pagamento.sql
+```
+
+O próprio arquivo SQL também traz exemplos de `\copy` para exportar diretamente para [backend/scripts/ordens_pagamento.csv](backend/scripts/ordens_pagamento.csv).
+
+Primeiro rode em simulação:
+
+```bash
+cd /var/www/autocare/backend
+python scripts/atualizar_formas_pagamento_os.py --dry-run
+```
+
+Se a prévia estiver correta, aplique:
+
+```bash
+cd /var/www/autocare/backend
+python scripts/atualizar_formas_pagamento_os.py --aplicar
+```
+
+Se preferir usar outro arquivo CSV, continue podendo informar `--arquivo` manualmente.
+
+### O que o script atualiza
+
+1. Campo `forma_pagamento` da OS
+2. Campo `numero_parcelas`
+3. Campo `maquina_id`, quando informado
+4. Campo `taxa_pagamento_aplicada` para OS concluídas
+5. Campo `valor_faturado`, recalculado com a nova taxa
+
+### Log gerado
+
+O processamento grava detalhes em `backend/logs/atualizacao_formas_pagamento_os.log`.
+
 ## 📄 Arquivos
 
 ### 1. `ajustar_perfis.sql`

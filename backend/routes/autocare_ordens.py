@@ -823,6 +823,8 @@ def listar_ordens_servico(
             "valor_total": ordem.valor_total,
             "valor_custo_pecas": valor_custo_pecas,  # Incluir custo das pe??as
             "valor_mao_obra_avulso": valor_mao_obra_avulso,  # Incluir m??o de obra avulsa
+            "forma_pagamento": ordem.forma_pagamento,
+            "numero_parcelas": ordem.numero_parcelas or 1,
             "taxa_pagamento_aplicada": taxa_pagamento_aplicada,
             "valor_faturado": valor_faturado_calculado  # Recalculado dinamicamente
         }
