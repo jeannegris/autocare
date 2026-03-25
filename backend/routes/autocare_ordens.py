@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, or_
 from typing import List, Optional
@@ -57,7 +57,7 @@ STATUS_ORDEM_DEFINICOES = {
         "Aguardando aprovação",
         "Aguardando aprovacao",
     ],
-    "CONCLUIDA": ["CONCLUIDA", "Concluída", "Concluida", "CONCLUDA", "CONCLUADA", "Conclu?da"],
+    "CONCLUIDA": ["CONCLUIDA", "Concluída", "Concluida", "CONCLUDA", "CONCLUADA", "Concluída"],
     "CANCELADA": ["CANCELADA", "Cancelada"],
 }
 
@@ -102,14 +102,14 @@ def filtro_status_ordem(coluna, *status_canonicos: str):
     return coluna.in_(sorted(set(variantes)))
 
 def gerar_numero_ordem(db: Session) -> str:
-    """Gerar pr??ximo n??mero de ordem sequencial"""
+    """Gerar próximo número de ordem sequencial"""
     ultimo_numero = db.query(func.max(OrdemServico.numero)).scalar()
     
     if ultimo_numero:
         try:
             proximo = int(ultimo_numero) + 1
         except:
-            # Se n??o conseguir converter, usar timestamp
+            # Se não conseguir converter, usar timestamp
             proximo = int(datetime.now().strftime("%Y%m%d%H%M%S"))[-8:]
     else:
         proximo = 1
@@ -273,20 +273,20 @@ def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optiona
 
 def consumir_lotes_fifo(db: Session, produto_id: int, quantidade_saida) -> float:
     """
-    Consumir lotes via FIFO e retornar o custo m??dio
+    Consumir lotes via FIFO e retornar o custo médio
     
     Args:
-        db: Sess??o do banco
+        db: Sessão do banco
         produto_id: ID do produto
         quantidade_saida: Quantidade a ser consumida (float, int ou Decimal)
         
     Returns:
-        Custo m??dio unit??rio da sa??da (baseado nos lotes consumidos)
+        Custo médio unitário da saída (baseado nos lotes consumidos)
     """
     # Converter quantidade para float
     qtd_saida = float(quantidade_saida)
     
-    # Buscar lotes dispon??veis ordenados por data de entrada (FIFO)
+    # Buscar lotes disponíveis ordenados por data de entrada (FIFO)
     lotes_disponiveis = db.query(LoteEstoque).filter(
         and_(
             LoteEstoque.produto_id == produto_id,
@@ -295,12 +295,12 @@ def consumir_lotes_fifo(db: Session, produto_id: int, quantidade_saida) -> float
         )
     ).order_by(LoteEstoque.data_entrada.asc()).all()
     
-    # Verificar se h?? estoque suficiente
+    # Verificar se há estoque suficiente
     estoque_total = sum(float(lote.saldo_atual) for lote in lotes_disponiveis)
     if estoque_total < qtd_saida:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Estoque insuficiente. Dispon??vel: {estoque_total}, Solicitado: {qtd_saida}"
+            detail=f"Estoque insuficiente. Disponível: {estoque_total}, Solicitado: {qtd_saida}"
         )
     
     # Consumir dos lotes (FIFO)
@@ -320,34 +320,34 @@ def consumir_lotes_fifo(db: Session, produto_id: int, quantidade_saida) -> float
             custo_total += consumo * float(lote.preco_custo_unitario)
             quantidade_restante = 0
         else:
-            # Este lote ser?? consumido completamente
+            # Este lote será consumido completamente
             consumo = saldo_lote
             custo_total += consumo * float(lote.preco_custo_unitario)
             quantidade_restante -= consumo
             lote.saldo_atual = 0.0
     
-    # Retornar custo m??dio unit??rio
+    # Retornar custo médio unitário
     return custo_total / qtd_saida if qtd_saida > 0 else 0.0
 
 def calcular_custo_lotes_fifo(db: Session, produto_id: int, quantidade: float) -> float:
     """
     Calcular o custo FIFO para uma quantidade de produto SEM consumir do estoque
-    (apenas para leitura/c??lculo)
+    (apenas para leitura/cálculo)
     
     Args:
-        db: Sess??o do banco
+        db: Sessão do banco
         produto_id: ID do produto
         quantidade: Quantidade desejada
         
     Returns:
-        Custo total baseado na f??rmula FIFO, ou 0 se n??o houver lotes
+        Custo total baseado na fórmula FIFO, ou 0 se não houver lotes
     """
     try:
-        msg = f"???? Calculando custo FIFO para produto {produto_id}, quantidade {quantidade}"
+        msg = f"Calculando custo FIFO para produto {produto_id}, quantidade {quantidade}"
         print(msg, flush=True)
         logger.info(msg)
         
-        # Buscar lotes dispon??veis ordenados por data de entrada (FIFO)
+        # Buscar lotes disponíveis ordenados por data de entrada (FIFO)
         lotes_disponiveis = db.query(LoteEstoque).filter(
             and_(
                 LoteEstoque.produto_id == produto_id,
@@ -356,26 +356,26 @@ def calcular_custo_lotes_fifo(db: Session, produto_id: int, quantidade: float) -
             )
         ).order_by(LoteEstoque.data_entrada.asc()).all()
         
-        msg = f"???? Encontrados {len(lotes_disponiveis)} lotes para produto {produto_id}"
+        msg = f"Encontrados {len(lotes_disponiveis)} lotes para produto {produto_id}"
         print(msg, flush=True)
         logger.info(msg)
         
         if not lotes_disponiveis:
-            # Se n??o h?? lotes, retornar 0
-            msg = f"?????? Nenhum lote dispon??vel para produto {produto_id}"
+            # Se não há lotes, retornar 0
+            msg = f"Nenhum lote disponível para produto {produto_id}"
             print(msg, flush=True)
             logger.warning(msg)
             return 0.0
         
-        # Verificar se h?? estoque suficiente
+        # Verificar se há estoque suficiente
         estoque_total = sum(float(lote.saldo_atual) for lote in lotes_disponiveis)
-        msg = f"???? Estoque total dispon??vel: {estoque_total}, quantidade solicitada: {quantidade}"
+        msg = f"Estoque total disponível: {estoque_total}, quantidade solicitada: {quantidade}"
         print(msg, flush=True)
         logger.info(msg)
         
         if estoque_total < quantidade:
-            # Se n??o h?? estoque suficiente, retornar 0 (ser?? tratado na valida????o)
-            msg = f"?????? Estoque insuficiente: {estoque_total} < {quantidade}"
+            # Se não há estoque suficiente, retornar 0 (será tratado na validação)
+            msg = f"Estoque insuficiente: {estoque_total} < {quantidade}"
             print(msg, flush=True)
             logger.warning(msg)
             return 0.0
@@ -396,40 +396,40 @@ def calcular_custo_lotes_fifo(db: Session, produto_id: int, quantidade: float) -
                 consumo = quantidade_restante
                 custo_item = consumo * preco_custo
                 custo_total += custo_item
-                msg = f"  ???? Lote {lote.id}: consumo {consumo} * R${preco_custo:.2f} = R${custo_item:.2f}"
+                msg = f"  Lote {lote.id}: consumo {consumo} * R${preco_custo:.2f} = R${custo_item:.2f}"
                 print(msg, flush=True)
                 logger.info(msg)
                 quantidade_restante = 0
             else:
-                # Este lote ser?? consumido completamente
+                # Este lote será consumido completamente
                 consumo = saldo_lote
                 custo_item = consumo * preco_custo
                 custo_total += custo_item
-                msg = f"  ???? Lote {lote.id}: consumo {consumo} * R${preco_custo:.2f} = R${custo_item:.2f}"
+                msg = f"  Lote {lote.id}: consumo {consumo} * R${preco_custo:.2f} = R${custo_item:.2f}"
                 print(msg, flush=True)
                 logger.info(msg)
                 quantidade_restante -= consumo
         
-        msg = f"??? Custo FIFO total para produto {produto_id}: R${custo_total:.2f}"
+        msg = f"Custo FIFO total para produto {produto_id}: R${custo_total:.2f}"
         print(msg, flush=True)
         logger.info(msg)
         return custo_total
     except Exception as e:
-        msg = f"??? Erro ao calcular custo FIFO para produto {produto_id}: {e}"
+        msg = f"Erro ao calcular custo FIFO para produto {produto_id}: {e}"
         print(msg, flush=True)
         logger.error(msg, exc_info=True)
         return 0.0
 
 @router.post("/buscar-cliente", response_model=ClienteBuscaResponse)
 def buscar_cliente_para_ordem_post(busca: ClienteBuscaRequest, db: Session = Depends(get_db)):
-    """Buscar cliente por CPF, CNPJ ou telefone para ordem de servi??o (POST)"""
-    logger.info(f"???? POST Recebido request de busca: {busca}")
+    """Buscar cliente por CPF, CNPJ ou telefone para ordem de serviço (POST)"""
+    logger.info(f"POST Recebido request de busca: {busca}")
     return buscar_cliente_comum(busca.termo_busca, db)
 
 @router.get("/buscar-cliente", response_model=ClienteBuscaResponse)
 def buscar_cliente_para_ordem_get(documento: str, db: Session = Depends(get_db)):
-    """Buscar cliente por CPF, CNPJ ou telefone para ordem de servi??o (GET)"""
-    logger.info(f"???? GET Recebido request de busca: documento={documento}")
+    """Buscar cliente por CPF, CNPJ ou telefone para ordem de serviço (GET)"""
+    logger.info(f"GET Recebido request de busca: documento={documento}")
     busca = ClienteBuscaRequest(termo_busca=documento)
     return buscar_cliente_comum(documento, db)
 
@@ -462,10 +462,10 @@ def validar_cpf(cpf: str) -> bool:
 def buscar_cliente_comum(termo_busca: str, db: Session):
     """Função comum para busca de cliente"""
     termo = termo_busca.strip()
-    logger.info(f"???? Termo após strip: '{termo}'")
+    logger.info(f"Termo após strip: '{termo}'")
     
     if not termo:
-        logger.warning("??? Termo de busca vazio")
+        logger.warning("Termo de busca vazio")
         return ClienteBuscaResponse(
             encontrado=False,
             message="Termo de busca não pode estar vazio"
@@ -473,7 +473,7 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
     
     # Remove caracteres especiais para busca mais flex??vel
     termo_limpo = ''.join(filter(str.isalnum, termo))
-    logger.info(f"???? Termo limpo: '{termo_limpo}'")
+    logger.info(f"Termo limpo: '{termo_limpo}'")
     
     # Determinar se é CPF ou telefone para 11 dígitos
     buscar_como_cpf = True
@@ -482,9 +482,9 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
         if not validar_cpf(termo_limpo):
             # Se não for CPF válido, tratar como telefone
             buscar_como_cpf = False
-            logger.info(f"???? 11 dígitos inválidos como CPF, tratando como telefone: '{termo_limpo}'")
+            logger.info(f"11 dígitos inválidos como CPF, tratando como telefone: '{termo_limpo}'")
         else:
-            logger.info(f"???? 11 dígitos válidos como CPF: '{termo_limpo}'")
+            logger.info(f"11 dígitos válidos como CPF: '{termo_limpo}'")
     
     # Construir query baseada no tipo detectado
     if buscar_como_cpf or len(termo_limpo) != 11:
@@ -506,7 +506,7 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
     if not cliente and len(termo_limpo) == 11:
         if buscar_como_cpf:
             # Tentou CPF, agora tentar telefone
-            logger.info("???? CPF não encontrado, tentando como telefone...")
+            logger.info("CPF não encontrado, tentando como telefone...")
             cliente = db.query(Cliente).filter(
                 or_(
                     func.regexp_replace(Cliente.telefone, '[^0-9]', '', 'g') == termo_limpo,
@@ -516,19 +516,19 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
             ).filter(Cliente.ativo == True).first()
         else:
             # Tentou telefone, agora tentar CPF
-            logger.info("???? Telefone não encontrado, tentando como CPF...")
+            logger.info("Telefone não encontrado, tentando como CPF...")
             cliente = db.query(Cliente).filter(
                 func.regexp_replace(Cliente.cpf_cnpj, '[^0-9]', '', 'g') == termo_limpo
             ).filter(Cliente.ativo == True).first()
     
     if not cliente:
-        logger.info(f"??? Cliente não encontrado para termo: '{termo}'")
+        logger.info(f"Cliente não encontrado para termo: '{termo}'")
         return ClienteBuscaResponse(
             encontrado=False,
             message="Cliente não encontrado. Deseja cadastrar um novo cliente?"
         )
     
-    logger.info(f"??? Cliente encontrado: {cliente.nome} (ID: {cliente.id})")
+    logger.info(f"Cliente encontrado: {cliente.nome} (ID: {cliente.id})")
     
     # Buscar veículos do cliente
     veiculos = db.query(Veiculo).filter(
@@ -568,10 +568,10 @@ def buscar_cliente_comum(termo_busca: str, db: Session):
 def buscar_veiculo_por_placa(busca: VeiculoBuscaRequest, db: Session = Depends(get_db)):
     """Buscar veículo por placa para ordem de serviço"""
     placa = busca.placa.strip().upper()
-    logger.info(f"???? Buscando veículo por placa: '{placa}'")
+    logger.info(f"Buscando veículo por placa: '{placa}'")
     
     if not placa:
-        logger.warning("??? Placa vazia")
+        logger.warning("Placa vazia")
         return VeiculoBuscaResponse(
             encontrado=False,
             message="Placa não pode estar vazia"
@@ -589,13 +589,13 @@ def buscar_veiculo_por_placa(busca: VeiculoBuscaRequest, db: Session = Depends(g
     ).filter(Veiculo.ativo == True).first()
     
     if not veiculo:
-        logger.info(f"??? Veículo não encontrado para placa: '{placa}'")
+        logger.info(f"Veículo não encontrado para placa: '{placa}'")
         return VeiculoBuscaResponse(
             encontrado=False,
             message="Veículo não encontrado com essa placa."
         )
     
-    logger.info(f"??? Veículo encontrado: {veiculo.marca} {veiculo.modelo} - {veiculo.placa}")
+    logger.info(f"Veículo encontrado: {veiculo.marca} {veiculo.modelo} - {veiculo.placa}")
     
     # Buscar cliente proprietário
     cliente = db.query(Cliente).filter(
@@ -606,7 +606,7 @@ def buscar_veiculo_por_placa(busca: VeiculoBuscaRequest, db: Session = Depends(g
     ).first()
     
     if not cliente:
-        logger.warning(f"?????? Cliente não encontrado para veículo ID: {veiculo.id}")
+        logger.warning(f"Cliente não encontrado para veículo ID: {veiculo.id}")
         return VeiculoBuscaResponse(
             encontrado=False,
             message="Proprietário do veículo não encontrado."
@@ -791,7 +791,7 @@ def listar_ordens_servico(
     # Enriquecer com dados do cliente e veículo
     result = []
     for ordem in ordens:
-        # Usar data_ordem (DateTime) se dispon??vel, sen??o data_abertura (Date)
+        # Usar data_ordem (DateTime) se disponível, senão data_abertura (Date)
         data_ordem_completa = ordem.data_ordem if ordem.data_ordem else ordem.data_abertura
         
         # Recalcular valor_faturado dinamicamente
@@ -816,13 +816,14 @@ def listar_ordens_servico(
             "veiculo_placa": ordem.veiculo.placa if ordem.veiculo else None,
             "tipo_ordem": ordem.tipo_ordem,
             "data_abertura": data_ordem_completa,  # Usar data_ordem com hora completa
+            "data_conclusao": ordem.data_conclusao,
             "status": normalizar_status_ordem(ordem.status) or ordem.status,
             "valor_servico": ordem.valor_servico,
             "valor_pecas": ordem.valor_pecas,
             "valor_desconto": ordem.valor_desconto,
             "valor_total": ordem.valor_total,
-            "valor_custo_pecas": valor_custo_pecas,  # Incluir custo das pe??as
-            "valor_mao_obra_avulso": valor_mao_obra_avulso,  # Incluir m??o de obra avulsa
+            "valor_custo_pecas": valor_custo_pecas,  # Incluir custo das peças
+            "valor_mao_obra_avulso": valor_mao_obra_avulso,  # Incluir mão de obra avulsa
             "forma_pagamento": ordem.forma_pagamento,
             "numero_parcelas": ordem.numero_parcelas or 1,
             "taxa_pagamento_aplicada": taxa_pagamento_aplicada,
@@ -834,7 +835,7 @@ def listar_ordens_servico(
 
 @router.get("/estatisticas")
 def obter_estatisticas_ordens(db: Session = Depends(get_db)):
-    """Obter estat??sticas das ordens de servi??o"""
+    """Obter estatísticas das ordens de serviço"""
     try:
         # Contar por status
         total = db.query(OrdemServico).count()
@@ -863,7 +864,7 @@ def obter_estatisticas_ordens(db: Session = Depends(get_db)):
             "pendentes": pendentes,
             "em_andamento": em_andamento,
             "aguardando_peca": aguardando_peca,
-            # Log detalhado para depura????o: mostrar totais calculados
+            # Log detalhado para depuração: mostrar totais calculados
             "aguardando_aprovacao": aguardando_aprovacao,
             "concluidas": concluidas,
             "canceladas": canceladas,
@@ -871,7 +872,7 @@ def obter_estatisticas_ordens(db: Session = Depends(get_db)):
             "valor_mes_atual": float(resultado_valor_mes) if resultado_valor_mes else 0.0
         }
     except Exception as e:
-        logger.error(f"Erro ao obter estat??sticas: {e}")
+        logger.error(f"Erro ao obter estatísticas: {e}")
         return {
             "total": 0,
             "pendentes": 0,
@@ -886,7 +887,7 @@ def obter_estatisticas_ordens(db: Session = Depends(get_db)):
 
 @router.get("/{ordem_id}", response_model=OrdemServicoNovaResponse)
 def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
-    """Buscar ordem de servi??o por ID"""
+    """Buscar ordem de serviço por ID"""
     ordem = db.query(OrdemServico).options(
         joinedload(OrdemServico.cliente),
         joinedload(OrdemServico.veiculo),
@@ -896,11 +897,11 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
     if not ordem:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ordem de servi??o n??o encontrada"
+            detail="Ordem de serviço não encontrada"
         )
     
     # Montar resposta com dados relacionados
-    # Calcular valor_subtotal j?? que ?? uma property readonly que retorna None
+    # Calcular valor_subtotal já que é uma property readonly que retorna None
     valor_subtotal_calculado = (ordem.valor_pecas or Decimal('0')) + (ordem.valor_servico or Decimal('0'))
     
     # Recalcular valor_faturado dinamicamente
@@ -934,8 +935,8 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
         "valor_subtotal": valor_subtotal_calculado,  # Usar valor calculado
         "valor_desconto": ordem.valor_desconto,
         "valor_total": ordem.valor_total,
-        "valor_custo_pecas": ordem.valor_custo_pecas or Decimal('0.00'),  # Custo real das pe??as
-        "valor_faturado": valor_faturado_calculado,  # Valor faturado recalculado (lucro l??quido)
+        "valor_custo_pecas": ordem.valor_custo_pecas or Decimal('0.00'),  # Custo real das peças
+        "valor_faturado": valor_faturado_calculado,  # Valor faturado recalculado (lucro líquido)
         "tempo_gasto_horas": ordem.tempo_gasto_horas or Decimal('0'),  # Evitar None
         "aprovado_cliente": ordem.aprovado_cliente,
         "forma_pagamento": ordem.forma_pagamento,
@@ -945,7 +946,7 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
         "cliente_nome": ordem.cliente.nome if ordem.cliente else None,
         "cliente_telefone": ordem.cliente.telefone if ordem.cliente else None,
         "cliente_email": ordem.cliente.email if ordem.cliente else None,
-        # Dados do ve??culo
+        # Dados do veículo
         "veiculo_placa": ordem.veiculo.placa if ordem.veiculo else None,
         "veiculo_marca": ordem.veiculo.marca if ordem.veiculo else None,
         "veiculo_modelo": ordem.veiculo.modelo if ordem.veiculo else None,
@@ -975,27 +976,27 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
     return OrdemServicoNovaResponse(**response_data)
 
 def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem], movimentos_estoque: List[MovimentoEstoque] = None, db: Session = None) -> dict:
-    """Calcular valores da ordem de servi??o
+    """Calcular valores da ordem de serviço
     
-    Valor Total (cobrado ao cliente) = Valor Servi??o + Valor Venda Pe??as - Desconto
-    Valor Faturado (lucro l??quido) = Valor Total - Valor Custo Pe??as - Valor M??o de Obra Avulsa
+    Valor Total (cobrado ao cliente) = Valor Serviço + Valor Venda Peças - Desconto
+    Valor Faturado (lucro líquido) = Valor Total - Valor Custo Peças - Valor Mão de Obra Avulsa
     
     Args:
-        ordem_data: Dicion??rio com valor_servico, percentual_desconto, tipo_desconto, valor_mao_obra_avulso
+        ordem_data: Dicionário com valor_servico, percentual_desconto, tipo_desconto, valor_mao_obra_avulso
         itens: Lista de itens da ordem
-        movimentos_estoque: Lista de movimentos de estoque para calcular custo real das pe??as
-        db: Session do banco (necess??rio para calcular custo FIFO quando criar nova ordem)
+        movimentos_estoque: Lista de movimentos de estoque para calcular custo real das peças
+        db: Session do banco (necessário para calcular custo FIFO quando criar nova ordem)
     """
-    valor_venda_pecas = Decimal('0.00')  # Valor de VENDA das pe??as (cobrado do cliente)
-    valor_custo_pecas = Decimal('0.00')  # Valor de CUSTO das pe??as (o que foi pago ao fornecedor)
+    valor_venda_pecas = Decimal('0.00')  # Valor de VENDA das peças (cobrado do cliente)
+    valor_custo_pecas = Decimal('0.00')  # Valor de CUSTO das peças (o que foi pago ao fornecedor)
     valor_servico = ordem_data.get('valor_servico', Decimal('0.00'))
     
-    # Somar valores dos itens (valor de venda) e buscar custo real das pe??as
+    # Somar valores dos itens (valor de venda) e buscar custo real das peças
     for item in itens:
         if item.tipo == "PRODUTO":
             valor_venda_pecas += item.valor_total
             
-            # Tentar calcular o custo real das pe??as
+            # Tentar calcular o custo real das peças
             custo_item = Decimal('0.00')
             
             logger.info(f"📦 Processando item: produto_id={item.produto_id}, quantidade={item.quantidade}, tipo={item.tipo}")
@@ -1030,7 +1031,7 @@ def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem], movimentos_
             
             valor_custo_pecas += custo_item
     
-    # Calcular subtotal (para c??lculo de desconto)
+    # Calcular subtotal (para cálculo de desconto)
     valor_subtotal = valor_venda_pecas + valor_servico
     
     # Calcular desconto
@@ -1046,15 +1047,15 @@ def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem], movimentos_
         else:  # TOTAL
             valor_desconto = (valor_subtotal * percentual_desconto) / 100
     
-    # M??o de obra avulso (n??o influencia valor_total, apenas valor_faturado)
+    # Mão de obra avulso (não influencia valor_total, apenas valor_faturado)
     valor_mao_obra_avulso = ordem_data.get('valor_mao_obra_avulso', Decimal('0.00'))
     if valor_mao_obra_avulso is None:
         valor_mao_obra_avulso = Decimal('0.00')
     
-    # VALOR TOTAL (cobrado ao cliente) = Valor Servi??o + Valor Venda Pe??as - Desconto
+    # VALOR TOTAL (cobrado ao cliente) = Valor Serviço + Valor Venda Peças - Desconto
     valor_total = valor_servico + valor_venda_pecas - valor_desconto
     
-    # VALOR FATURADO (lucro l??quido da loja) = Valor Total - Valor Custo Pe??as - Valor M??o de Obra Avulsa
+    # VALOR FATURADO (lucro líquido da loja) = Valor Total - Valor Custo Peças - Valor Mão de Obra Avulsa
     valor_faturado = calcular_valor_faturado_liquido(
         valor_total=valor_total,
         valor_custo_pecas=valor_custo_pecas,
@@ -1062,43 +1063,43 @@ def calcular_valores_ordem(ordem_data: dict, itens: List[ItemOrdem], movimentos_
     )
     
     return {
-        'valor_pecas': valor_venda_pecas,  # Valor de VENDA das pe??as
+        'valor_pecas': valor_venda_pecas,  # Valor de VENDA das peças
         'valor_servico': valor_servico,
         'valor_subtotal': valor_subtotal,
         'valor_desconto': valor_desconto,
         'valor_mao_obra_avulso': valor_mao_obra_avulso,
         'valor_total': valor_total,  # Cobrado ao cliente
-        'valor_custo_pecas': valor_custo_pecas,  # Custo real das pe??as
-        'valor_faturado': valor_faturado  # Lucro l??quido
+        'valor_custo_pecas': valor_custo_pecas,  # Custo real das peças
+        'valor_faturado': valor_faturado  # Lucro líquido
     }
 
 @router.post("/", response_model=OrdemServicoNovaResponse, status_code=status.HTTP_201_CREATED)
 async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
-    """Criar nova ordem de servi??o (endpoint com logging adicional para depura????o)"""
+    """Criar nova ordem de serviço (endpoint com logging adicional para depuração)"""
     try:
         body = await request.json()
     except Exception as e:
         logger.error(f"Erro ao ler body JSON: {e}")
         body = None
 
-    logger.info(f"???? Recebido POST /ordens - body (raw): {body}")
+    logger.info(f"Recebido POST /ordens - body (raw): {body}")
 
     # Validar payload manualmente para capturar erros
     try:
         ordem_data = OrdemServicoNovaCreate.parse_obj(body)
     except ValidationError as ve:
-        logger.error(f"??? Valida????o falhou ao criar ordem: {ve}")
-        logger.error(f"Detalhes da valida????o: {ve.errors()}")
-        # retornar detalhe para facilitar debugging no frontend (tempor??rio)
+        logger.error(f"Validação falhou ao criar ordem: {ve}")
+        logger.error(f"Detalhes da validação: {ve.errors()}")
+        # retornar detalhe para facilitar debugging no frontend (temporário)
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ve.errors())
 
-    # Normalizar veiculo_id: frontend pode enviar 0 quando nenhum ve??culo foi selecionado
-    # -> tratar como None para evitar viola????o de FK ao inserir no banco
+    # Normalizar veiculo_id: frontend pode enviar 0 quando nenhum veículo foi selecionado
+    # -> tratar como None para evitar violação de FK ao inserir no banco
     try:
         if getattr(ordem_data, 'veiculo_id', None) in (0, '0'):
             ordem_data.veiculo_id = None
     except Exception:
-        # N??o bloquear cria????o se algo inesperado ocorrer na normaliza????o
+        # Não bloquear criação se algo inesperado ocorrer na normalização
         pass
 
     # Verificar se cliente existe
@@ -1106,10 +1107,10 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
     if not cliente:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Cliente n??o encontrado"
+            detail="Cliente não encontrado"
         )
     
-    # Verificar se ve??culo existe e pertence ao cliente (apenas se veiculo_id foi fornecido)
+    # Verificar se veículo existe e pertence ao cliente (apenas se veiculo_id foi fornecido)
     veiculo = None
     if ordem_data.veiculo_id:
         veiculo = db.query(Veiculo).filter(
@@ -1121,7 +1122,7 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         if not veiculo:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Ve??culo n??o encontrado ou n??o pertence ao cliente"
+                detail="Veículo não encontrado ou não pertence ao cliente"
             )
     
     # Validar itens de produto se houver
@@ -1131,27 +1132,27 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
             if not produto:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Produto {item.produto_id} n??o encontrado"
+                    detail=f"Produto {item.produto_id} não encontrado"
                 )
             
             if produto.quantidade_atual < item.quantidade:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Estoque insuficiente para o produto {produto.nome}. Dispon??vel: {produto.quantidade_atual}"
+                    detail=f"Estoque insuficiente para o produto {produto.nome}. Disponível: {produto.quantidade_atual}"
                 )
     
-    # Gerar n??mero da ordem
+    # Gerar número da ordem
     numero = gerar_numero_ordem(db)
     
     try:
-        # Criar ordem de servi??o
+        # Criar ordem de serviço
         ordem_dict = ordem_data.dict(exclude={'itens'})
-        # Normaliza????o adicional: converter veiculo_id == 0 para None
+        # Normalização adicional: converter veiculo_id == 0 para None
         if ordem_dict.get('veiculo_id') in (0, '0'):
             ordem_dict['veiculo_id'] = None
         if ordem_dict.get('status'):
             ordem_dict['status'] = normalizar_status_ordem(ordem_dict.get('status'))
-        # Remover campos que s??o properties somente leitura
+        # Remover campos que são properties somente leitura
         ordem_dict.pop('tempo_estimado_horas', None)
         ordem_dict.pop('tempo_gasto_horas', None)
         ordem_dict.pop('percentual_desconto', None)
@@ -1159,7 +1160,7 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         ordem_dict.pop('valor_subtotal', None)
         ordem = OrdemServico(**ordem_dict, numero=numero)
         
-        # Definir data da ordem se n??o fornecida
+        # Definir data da ordem se não fornecida
         if not ordem.data_ordem:
             ordem.data_ordem = datetime.now()
         
@@ -1170,13 +1171,13 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         field_name = str(e).split("'")[-2] if "'" in str(e) else "desconhecido"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Erro ao criar ordem: o campo '{field_name}' n??o pode ser definido diretamente. Por favor, contate o suporte t??cnico."
+            detail=f"Erro ao criar ordem: o campo '{field_name}' não pode ser definido diretamente. Por favor, contate o suporte técnico."
         )
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro ao criar ordem de servi??o: {str(e)}"
+            detail=f"Erro ao criar ordem de serviço: {str(e)}"
         )
     
     # Processar itens
@@ -1203,7 +1204,7 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         valores = calcular_valores_ordem(ordem_dict, itens_criados, db=db)
         ordem.valor_pecas = valores['valor_pecas']
         ordem.valor_servico = valores['valor_servico']
-        # valor_subtotal ?? uma property readonly, n??o pode ser setado
+        # valor_subtotal ?? uma property readonly, não pode ser setado
         ordem.valor_desconto = valores['valor_desconto']
         ordem.valor_mao_obra_avulso = valores['valor_mao_obra_avulso']
         ordem.valor_total = valores['valor_total']
@@ -1214,10 +1215,10 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         ordem.valor_mao_obra = ordem.valor_servico
         ordem.desconto = ordem.valor_desconto
         
-        # Atualizar KM do ve??culo se fornecido e for maior que o atual
+        # Atualizar KM do veículo se fornecido e for maior que o atual
         if ordem.km_veiculo and ordem.km_veiculo > 0 and veiculo:
             if ordem.km_veiculo > veiculo.km_atual:
-                logger.info(f"???? Atualizando KM do ve??culo {veiculo.placa}: {veiculo.km_atual} -> {ordem.km_veiculo}")
+                logger.info(f"Atualizando KM do veículo {veiculo.placa}: {veiculo.km_atual} -> {ordem.km_veiculo}")
                 veiculo.km_atual = ordem.km_veiculo
         
         db.commit()
@@ -1226,7 +1227,7 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro ao finalizar cria????o da ordem: {str(e)}"
+            detail=f"Erro ao finalizar criação da ordem: {str(e)}"
         )
     
     # Retornar ordem criada
@@ -1234,28 +1235,28 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
 
 def criar_historico_manutencao(ordem: OrdemServico, db: Session):
     """
-    Cria um registro no hist??rico de manuten????es quando uma ordem de servi??o ?? conclu??da.
-    Analisa os itens de servi??o para determinar o tipo de manuten????o e sugerir a pr??xima revis??o.
+    Cria um registro no histórico de manutenções quando uma ordem de serviço é concluída.
+    Analisa os itens de serviço para determinar o tipo de manutenção e sugerir a pr??xima revisão.
     """
-    # Verificar se a ordem tem ve??culo associado e se ?? do tipo SERVICO ou VENDA_SERVICO
+    # Verificar se a ordem tem veículo associado e se ?? do tipo SERVICO ou VENDA_SERVICO
     if not ordem.veiculo_id or ordem.tipo_ordem not in ["SERVICO", "VENDA_SERVICO"]:
         return
     
-    # Verificar se j?? existe um hist??rico para esta ordem (evitar duplicatas)
+    # Verificar se já existe um histórico para esta ordem (evitar duplicatas)
     historico_existente = db.query(ManutencaoHistorico).filter(
         ManutencaoHistorico.ordem_servico_id == ordem.id
     ).first()
     
     if historico_existente:
-        logger.info(f"Hist??rico de manuten????o j?? existe para OS {ordem.numero}")
+        logger.info(f"Histórico de manutenção já existe para OS {ordem.numero}")
         return
     
-    # Obter ve??culo
+    # Obter veículo
     veiculo = db.query(Veiculo).filter(Veiculo.id == ordem.veiculo_id).first()
     if not veiculo:
         return
     
-    # Coletar itens de servi??o
+    # Coletar itens de serviço
     itens_servico = db.query(ItemOrdem).filter(
         and_(
             ItemOrdem.ordem_id == ordem.id,
@@ -1263,62 +1264,62 @@ def criar_historico_manutencao(ordem: OrdemServico, db: Session):
         )
     ).all()
     
-    # Se n??o houver itens de servi??o, usar descri????o gen??rica
+    # Se não houver itens de serviço, usar descrição genérica
     if not itens_servico:
-        tipo_manutencao = "Manuten????o"
-        descricao_completa = ordem.descricao_servico or ordem.descricao_problema or "Servi??o realizado"
+        tipo_manutencao = "Manutenção"
+        descricao_completa = ordem.descricao_servico or ordem.descricao_problema or "Serviço realizado"
     else:
-        # Combinar descri????es dos servi??os
+        # Combinar descrições dos serviços
         descricoes = [item.descricao for item in itens_servico if item.descricao]
-        tipo_manutencao = descricoes[0] if descricoes else "Manuten????o"
-        descricao_completa = ", ".join(descricoes) if descricoes else "Servi??os realizados"
+        tipo_manutencao = descricoes[0] if descricoes else "Manutenção"
+        descricao_completa = ", ".join(descricoes) if descricoes else "Serviços realizados"
     
-    # Determinar kilometragem da pr??xima manuten????o baseado no tipo de servi??o
+    # Determinar kilometragem da pr??xima manutenção baseado no tipo de serviço
     km_proxima = None
     intervalo_km = None
     
-    # An??lise inteligente do tipo de servi??o para sugerir pr??xima revis??o
+    # Análise inteligente do tipo de serviço para sugerir pr??xima revisão
     descricao_lower = descricao_completa.lower()
     
-    if "??leo" in descricao_lower or "oleo" in descricao_lower or "lubrificante" in descricao_lower:
-        intervalo_km = 5000  # Troca de ??leo geralmente a cada 5000 km
-    elif "filtro" in descricao_lower and "??leo" not in descricao_lower:
+    if "óleo" in descricao_lower or "oleo" in descricao_lower or "lubrificante" in descricao_lower:
+        intervalo_km = 5000  # Troca de óleo geralmente a cada 5000 km
+    elif "filtro" in descricao_lower and "óleo" not in descricao_lower:
         intervalo_km = 10000  # Filtros diversos
     elif "correia" in descricao_lower:
         intervalo_km = 50000  # Correia dentada/poly
     elif "vela" in descricao_lower:
-        intervalo_km = 20000  # Velas de igni????o
+        intervalo_km = 20000  # Velas de ignição
     elif "freio" in descricao_lower or "pastilha" in descricao_lower or "disco" in descricao_lower:
         intervalo_km = 30000  # Sistema de freios
-    elif "amortecedor" in descricao_lower or "suspens??o" in descricao_lower or "suspensao" in descricao_lower:
+    elif "amortecedor" in descricao_lower or "suspensão" in descricao_lower or "suspensao" in descricao_lower:
         intervalo_km = 40000  # Suspens??o
     elif "pneu" in descricao_lower or "balanceamento" in descricao_lower or "alinhamento" in descricao_lower:
-        intervalo_km = 10000  # Rod??zio/alinhamento de pneus
+        intervalo_km = 10000  # Rodízio/alinhamento de pneus
     elif "bateria" in descricao_lower:
         intervalo_km = 50000  # Bateria
     elif "ar condicionado" in descricao_lower or "climatizador" in descricao_lower:
         intervalo_km = 15000  # Ar condicionado
-    elif "revis??o" in descricao_lower or "revisao" in descricao_lower or "inspe????o" in descricao_lower or "inspecao" in descricao_lower:
+    elif "revisão" in descricao_lower or "revisao" in descricao_lower or "inspeção" in descricao_lower or "inspecao" in descricao_lower:
         intervalo_km = 10000  # Revis??o geral
     else:
-        # Servi??o gen??rico - sugerir revis??o padr??o
+        # Serviço gen??rico - sugerir revisão padrão
         intervalo_km = 10000
     
-    # Calcular km da pr??xima manuten????o
+    # Calcular km da pr??xima manutenção
     km_atual = ordem.km_veiculo or veiculo.km_atual
     if km_atual and intervalo_km:
         km_proxima = km_atual + intervalo_km
     
-    # Calcular data estimada da pr??xima manuten????o (assumindo m??dia de 1000 km/m??s)
+    # Calcular data estimada da pr??xima manutenção (assumindo m??dia de 1000 km/mês)
     data_proxima = None
     if km_proxima and km_atual:
         km_restantes = km_proxima - km_atual
-        meses_estimados = km_restantes / 1000  # Estimativa: 1000 km por m??s
+        meses_estimados = km_restantes / 1000  # Estimativa: 1000 km por mês
         from dateutil.relativedelta import relativedelta
         data_hoje = date.today()
         data_proxima = data_hoje + relativedelta(months=int(meses_estimados))
     
-    # Criar registro de hist??rico
+    # Criar registro de histórico
     historico = ManutencaoHistorico(
         veiculo_id=ordem.veiculo_id,
         tipo=tipo_manutencao[:100],  # Limitar a 100 caracteres
@@ -1333,7 +1334,7 @@ def criar_historico_manutencao(ordem: OrdemServico, db: Session):
     )
     
     db.add(historico)
-    logger.info(f"??? Hist??rico de manuten????o criado para OS {ordem.numero} - Ve??culo {veiculo.placa} - Pr??xima em {km_proxima} km")
+    logger.info(f"Histórico de manutenção criado para OS {ordem.numero} - Ve??culo {veiculo.placa} - Próxima em {km_proxima} km")
 
 @router.put("/{ordem_id}", response_model=OrdemServicoNovaResponse)
 def atualizar_ordem_servico(
@@ -1341,23 +1342,23 @@ def atualizar_ordem_servico(
     ordem_data: OrdemServicoNovaUpdate,
     db: Session = Depends(get_db)
 ):
-    """Atualizar ordem de servi??o"""
+    """Atualizar ordem de serviço"""
     ordem = db.query(OrdemServico).filter(OrdemServico.id == ordem_id).first()
     if not ordem:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ordem de servi??o n??o encontrada"
+            detail="Ordem de serviço não encontrada"
         )
     
-    # Atualizar apenas campos n??o nulos (exceto itens que ser??o tratados separadamente)
-    # Guardar status anterior para detectar transi????o corretamente
+    # Atualizar apenas campos não nulos (exceto itens que seráo tratados separadamente)
+    # Guardar status anterior para detectar transição corretamente
     previous_status = normalizar_status_ordem(ordem.status) or ordem.status
     if ordem.status != previous_status:
         ordem.status = previous_status
     update_data = ordem_data.dict(exclude_unset=True)
     itens_payload = update_data.pop('itens', None)
 
-    # Normaliza????o: se frontend enviar veiculo_id = 0, tratar como None para n??o violar FK
+    # Normalização: se frontend enviar veiculo_id = 0, tratar como None para não violar FK
     if 'veiculo_id' in update_data and update_data.get('veiculo_id') in (0, '0'):
         update_data['veiculo_id'] = None
 
@@ -1371,10 +1372,10 @@ def atualizar_ordem_servico(
         if not motivo or not motivo.strip():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Motivo do cancelamento ?? obrigat??rio ao cancelar uma ordem de servi??o"
+                detail="Motivo do cancelamento é obrigatório ao cancelar uma ordem de serviço"
             )
 
-    # Mapear itens existentes e quantidades ANTES de qualquer altera????o
+    # Mapear itens existentes e quantidades ANTES de qualquer alteração
     itens_existentes = {it.id: it for it in ordem.itens}
     quantidades_anteriores = {it.id: it.quantidade for it in ordem.itens}
     
@@ -1394,7 +1395,7 @@ def atualizar_ordem_servico(
         field_name = str(e).split("'")[-2] if "'" in str(e) else "desconhecido"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Erro ao atualizar ordem: o campo '{field_name}' n??o pode ser modificado diretamente. Por favor, contate o suporte t??cnico."
+            detail=f"Erro ao atualizar ordem: o campo '{field_name}' não pode ser modificado diretamente. Por favor, contate o suporte técnico."
         )
     except Exception as e:
         db.rollback()
@@ -1477,8 +1478,8 @@ def atualizar_ordem_servico(
                             quantidade=qtd_devolver,
                             preco_unitario=existing_obj.valor_unitario,
                             valor_total=(existing_obj.valor_unitario * qtd_devolver) if existing_obj.valor_unitario else None,
-                            motivo=f"Ajuste Ordem de Servi??o (removido item) - OS {ordem.numero}",
-                            observacoes=f"Item removido na edi????o, repondo {qtd_devolver}",
+                            motivo=f"Ajuste Ordem de Serviço (removido item) - OS {ordem.numero}",
+                            observacoes=f"Item removido na edição, repondo {qtd_devolver}",
                             ordem_servico_id=ordem.id,
                             data_movimentacao=datetime.now(tz)
                         )
@@ -1576,13 +1577,13 @@ def atualizar_ordem_servico(
                 produto.quantidade_atual -= item.quantidade
                 # Status do produto é calculado automaticamente pela property
 
-          # Ordem já tinha baixa aplicada ??? aplicar somente delta quando itens mudaram
+          # Ordem já tinha baixa aplicada aplicar somente delta quando itens mudaram
         # Obter quantidades atuais após atualização
         itens_atualizados = db.query(ItemOrdem).filter(ItemOrdem.ordem_id == ordem.id).all()
         quantidades_novas = {it.id: it.quantidade for it in itens_atualizados}
 
         # Mapear por produto: se item foi novo (id não estava em quantidades_anteriores) consideramos anterior=0
-        # Para itens deletados, quantidades_novas não ter?? a chave ??? tratamos como novo=0
+        # Para itens deletados, quantidades_novas não terá a chave tratamos como novo=0
         all_item_ids = set(list(quantidades_anteriores.keys()) + list(quantidades_novas.keys()))
 
         for item_id in all_item_ids:
@@ -1599,15 +1600,15 @@ def atualizar_ordem_servico(
             except Exception:
                 new_q_val = 0
 
-            # Se n??o houve mudan??a, pular
+            # Se não houve mudança, pular
             if new_q_val == old_q_val:
                 continue
 
-            # Buscar item (pode ter sido deletado ??? neste caso new_q_val == 0)
+            # Buscar item (pode ter sido deletado neste caso new_q_val == 0)
             item_obj = db.query(ItemOrdem).filter(ItemOrdem.id == item_id).first()
             # Se item_obj for None e old_q>0, significa que item foi removido -> criar ENTRADA de old_q
             if item_obj is None and old_q_val > 0:
-                # precisamos saber qual produto era antes ??? buscar em itens_existentes
+                # precisamos saber qual produto era antes buscar em itens_existentes
                 existing_item = itens_existentes.get(item_id)
                 if not existing_item or not existing_item.produto_id:
                     continue
@@ -1623,7 +1624,7 @@ def atualizar_ordem_servico(
                     quantidade=old_q_val,
                     preco_unitario=existing_item.valor_unitario,
                     valor_total=(existing_item.valor_unitario * old_q_val) if existing_item.valor_unitario else None,
-                    motivo=f"Ajuste Ordem de Servi??o (removido item) - OS {ordem.numero}",
+                    motivo=f"Ajuste Ordem de Serviço (removido item) - OS {ordem.numero}",
                     observacoes=f"Ajuste retroativo: item removido, repondo {old_q_val}",
                     ordem_servico_id=ordem.id,
                     data_movimentacao=datetime.now(tz)
@@ -1631,7 +1632,7 @@ def atualizar_ordem_servico(
                 db.add(movimento)
                 produto.quantidade_atual += old_q_val
                 # data_ultima_movimentacao e tipo_ultima_movimentacao s??o properties calculadas
-                # N??o atribuir produto.status diretamente ??? ?? uma property calculada
+                # N??o atribuir produto.status diretamente ?? uma property calculada
 
             else:
                 # item_obj existe (ou new_q_val>0) -> calcular delta = new - old
@@ -1641,7 +1642,7 @@ def atualizar_ordem_servico(
                     produto_id = item_obj.produto_id
                     valor_unitario = item_obj.valor_unitario
                 else:
-                    # Se item_obj n??o existe mas new_q_val>0 (caso novo com id tempor??rio), pular ??? novo item j?? foi tratado na transi????o inicial
+                    # Se item_obj não existe mas new_q_val>0 (caso novo com id temporário), pular novo item já foi tratado na transição inicial
                     continue
 
                 if not produto_id:
@@ -1677,7 +1678,7 @@ def atualizar_ordem_servico(
                         preco_unitario=valor_unitario,
                         preco_custo=custo_medio,  # Custo real FIFO
                         valor_total=(valor_unitario * delta) if valor_unitario else None,
-                        motivo=f"Ajuste Ordem de Servi??o - OS {ordem.numero}",
+                        motivo=f"Ajuste Ordem de Serviço - OS {ordem.numero}",
                         observacoes=f"Ajuste quantidade item id={item_id}: {old_q_val} -> {new_q_val}",
                         ordem_servico_id=ordem.id,
                         data_movimentacao=datetime.now(tz)
@@ -1695,7 +1696,7 @@ def atualizar_ordem_servico(
                         quantidade=entrada_q,
                         preco_unitario=valor_unitario,
                         valor_total=(valor_unitario * entrada_q) if valor_unitario else None,
-                        motivo=f"Ajuste Ordem de Servi??o - OS {ordem.numero}",
+                        motivo=f"Ajuste Ordem de Serviço - OS {ordem.numero}",
                         observacoes=f"Ajuste quantidade item id={item_id}: {old_q_val} -> {new_q_val}",
                         ordem_servico_id=ordem.id,
                         data_movimentacao=datetime.now(tz)
@@ -1706,13 +1707,13 @@ def atualizar_ordem_servico(
 
     elif novo_status in ["PENDENTE", "AGUARDANDO_PECA", "AGUARDANDO_APROVACAO", "CANCELADA"] and (
         previous_status in ["CONCLUIDA", "EM_ANDAMENTO"] or
-        # Ou se j?? existirem movimentos SAIDA para essa ordem (baixa aplicada retroativamente)
+        # Ou se já existirem movimentos SAIDA para essa ordem (baixa aplicada retroativamente)
         db.query(func.count(MovimentoEstoque.id)).filter(
             and_(MovimentoEstoque.ordem_servico_id == ordem.id, MovimentoEstoque.tipo == "SAIDA")
         ).scalar() > 0
     ):
-        # Transi????o DE status com baixa aplicada PARA status de pausa/cancelamento -> devolver apenas o que ainda n??o foi devolvido
-        # Para evitar devolu????es duplicadas, vamos calcular por produto quanto foi SA??DO para o servi??o e quanto j?? foi devolvido (ENTRADA com motivo de devolu????o)
+        # Transição DE status com baixa aplicada PARA status de pausa/cancelamento -> devolver apenas o que ainda não foi devolvido
+        # Para evitar devoluções duplicadas, vamos calcular por produto quanto foi SA??DO para o serviço e quanto já foi devolvido (ENTRADA com motivo de devolução)
         itens_produto = db.query(ItemOrdem).filter(
             and_(
                 ItemOrdem.ordem_id == ordem_id,
@@ -1735,13 +1736,13 @@ def atualizar_ordem_servico(
                 )
             ).scalar() or 0
 
-            # Soma total de ENTRADA j?? gerada como devolu????o para esta ordem/produto
+            # Soma total de ENTRADA já gerada como devolução para esta ordem/produto
             total_entrada_devolucao = db.query(func.sum(MovimentoEstoque.quantidade)).filter(
                 and_(
                     MovimentoEstoque.ordem_servico_id == ordem.id,
                     MovimentoEstoque.item_id == produto.id,
                     MovimentoEstoque.tipo == "ENTRADA",
-                    MovimentoEstoque.motivo.ilike("%Devolu????o Ordem de Servi??o%")
+                    MovimentoEstoque.motivo.ilike("%Devolução Ordem de Serviço%")
                 )
             ).scalar() or 0
 
@@ -1755,15 +1756,15 @@ def atualizar_ordem_servico(
             if ainda_devolver <= 0:
                 continue
 
-            # Log detalhado para depura????o: mostrar totais calculados
+            # Log detalhado para depuração: mostrar totais calculados
             logger.info(f"Devolucao calculada OS={ordem.numero} produto_id={produto.id} total_saida={total_saida} total_entrada_devolucao={total_entrada_devolucao} ainda_devolver={ainda_devolver} item_quantidade={item.quantidade}")
 
             # Devolver todo o saldo remanescente (ainda_devolver).
-            # Antes devolv??amos em parcelas limitadas ao item.quantidade, o que causava devolu????es m??ltiplas
-            # em m??ltiplas altera????es de status. Aqui garantimos que a primeira transi????o devolver?? o restante.
+            # Antes devolv??amos em parcelas limitadas ao item.quantidade, o que causava devoluções m??ltiplas
+            # em m??ltiplas alterações de status. Aqui garantimos que a primeira transição devolver?? o restante.
             qtd_a_devolver = ainda_devolver
 
-            # Se ?? cancelamento, incluir o motivo na observa????o
+            # Se é cancelamento, incluir o motivo na observação
             observacao_movimento = f"OS {ordem.numero} - {item.descricao} - Status alterado para: {novo_status}"
             if novo_status == "CANCELADA" and ordem.motivo_cancelamento:
                 observacao_movimento += f" | Motivo: {ordem.motivo_cancelamento}"
@@ -1775,7 +1776,7 @@ def atualizar_ordem_servico(
                 quantidade=qtd_a_devolver,
                 preco_unitario=item.valor_unitario,
                 valor_total=(item.valor_unitario * qtd_a_devolver) if item.valor_unitario else None,
-                motivo="Devolu????o Ordem de Servi??o" if novo_status != "CANCELADA" else "Cancelamento de Ordem",
+                motivo="Devolução Ordem de Serviço" if novo_status != "CANCELADA" else "Cancelamento de Ordem",
                 observacoes=observacao_movimento,
                 ordem_servico_id=ordem.id,
                 data_movimentacao=datetime.now(tz)
@@ -1785,7 +1786,7 @@ def atualizar_ordem_servico(
             produto.quantidade_atual += qtd_a_devolver
             # Status do produto ?? calculado automaticamente pela property
     
-    # Garantir que os movimentos rec??m-criados estejam vis??veis para a query de recalcula????o
+    # Garantir que os movimentos recém-criados estejam visíveis para a query de recálculo
     db.flush()
     
     # Recalcular valores da ordem com itens atualizados
@@ -1805,7 +1806,7 @@ def atualizar_ordem_servico(
 
         ordem.valor_pecas = valores['valor_pecas']
         ordem.valor_servico = valores['valor_servico']
-        # `valor_subtotal` ?? uma property readonly no modelo; n??o atribu??mos diretamente
+        # `valor_subtotal` ?? uma property readonly no modelo; não atribu??mos diretamente
         ordem.valor_desconto = valores['valor_desconto']
         ordem.valor_mao_obra_avulso = valores['valor_mao_obra_avulso']
         ordem.valor_total = valores['valor_total']
@@ -1816,10 +1817,10 @@ def atualizar_ordem_servico(
         if normalizar_status_ordem(ordem.status) == "CONCLUIDA" and ordem.forma_pagamento:
             aplicar_taxa_pagamento(db, ordem, ordem.maquina_id)
     except Exception:
-        # Se algo falhar na recalcula????o, registrar exce????o
+        # Se algo falhar no recálculo, registrar exceção
         logger.exception(f"Erro ao recalcular valores da ordem {ordem.id}")
 
-    # Atualizar KM do ve??culo se fornecido
+    # Atualizar KM do veículo se fornecido
     if ordem_data.km_veiculo and ordem_data.km_veiculo > 0:
         veiculo = db.query(Veiculo).filter(Veiculo.id == ordem.veiculo_id).first()
         if veiculo and ordem_data.km_veiculo > veiculo.km_atual:
@@ -1832,22 +1833,22 @@ def atualizar_ordem_servico(
 
 @router.delete("/{ordem_id}")
 def cancelar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
-    """Cancelar ordem de servi??o"""
+    """Cancelar ordem de serviço"""
     ordem = db.query(OrdemServico).filter(OrdemServico.id == ordem_id).first()
     if not ordem:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ordem de servi??o n??o encontrada"
+            detail="Ordem de serviço não encontrada"
         )
     
     if normalizar_status_ordem(ordem.status) == "CONCLUIDA":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="N??o ?? poss??vel cancelar uma ordem de servi??o conclu??da"
+            detail="N??o é possível cancelar uma ordem de serviço concluída"
         )
     
     ordem.status = "CANCELADA"
     db.commit()
     
-    return {"message": "Ordem de servi??o cancelada com sucesso"}
+    return {"message": "Ordem de serviço cancelada com sucesso"}
 

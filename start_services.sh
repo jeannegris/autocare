@@ -24,6 +24,7 @@ KILL_CMD="/usr/bin/kill"
 CURL_CMD="/usr/bin/curl"
 SS_CMD="/usr/bin/ss"
 NETSTAT_CMD="/usr/bin/netstat"
+FUSER_CMD="/usr/bin/fuser"
 
 # Cores para output
 RED='\033[0;31m'
@@ -193,6 +194,51 @@ function wait_for_port_down() {
     return 1
 }
 
+function get_backend_pids() {
+    {
+        sudo -n $PGREP_CMD -f 'uvicorn.*server:app' 2>/dev/null ||
+        $PGREP_CMD -f 'uvicorn.*server:app' 2>/dev/null ||
+        true
+    } | tr ' ' '\n' | $GREP_CMD -E '^[0-9]+$' | sort -u
+}
+
+function stop_backend_processes() {
+    local pids="$1"
+
+    if [ -z "$pids" ]; then
+        return 0
+    fi
+
+    log "INFO" "Parando processo(s) backend existente(s): $pids"
+
+    echo "$pids" | xargs -r $KILL_CMD 2>/dev/null || true
+    echo "$pids" | xargs -r sudo -n $KILL_CMD 2>/dev/null || true
+
+    if wait_for_port_down $BACKEND_PORT 15; then
+        log "INFO" "Processo backend finalizado"
+        return 0
+    fi
+
+    log "WARN" "Forçando finalização do backend..."
+    echo "$pids" | xargs -r $KILL_CMD -9 2>/dev/null || true
+    echo "$pids" | xargs -r sudo -n $KILL_CMD -9 2>/dev/null || true
+
+    if [ -x "$FUSER_CMD" ]; then
+        sudo -n $FUSER_CMD -k "${BACKEND_PORT}/tcp" 2>/dev/null || true
+        $FUSER_CMD -k "${BACKEND_PORT}/tcp" 2>/dev/null || true
+    fi
+
+    $SLEEP_CMD 2 2>/dev/null || sleep 2
+
+    if wait_for_port_down $BACKEND_PORT 10; then
+        log "INFO" "Porta $BACKEND_PORT liberada após finalização forçada"
+        return 0
+    fi
+
+    log "ERROR" "Não foi possível liberar a porta $BACKEND_PORT"
+    return 1
+}
+
 # Banner inicial
 echo -e "${PURPLE}"
 echo "============================================================"
@@ -305,19 +351,14 @@ echo -e "\n🔧 ${BLUE}Verificando Backend AutoCare (porta $BACKEND_PORT)...${NC
 
 if is_port_listening $BACKEND_PORT; then
     log "INFO" "Backend já está rodando na porta $BACKEND_PORT - reiniciando..."
-    
-    # Parar processos existentes
-    OLD_PIDS=$($PGREP_CMD -f 'uvicorn.*server:app' 2>/dev/null || pgrep -f 'uvicorn.*server:app' 2>/dev/null || true)
+
+    OLD_PIDS="$(get_backend_pids)"
     if [ -n "$OLD_PIDS" ]; then
-        log "INFO" "Parando processo(s) backend existente(s): $OLD_PIDS"
-        echo "$OLD_PIDS" | xargs -r $KILL_CMD 2>/dev/null || echo "$OLD_PIDS" | xargs -r kill 2>/dev/null || true
-        
-        # Aguardar porta ficar livre
-        if wait_for_port_down $BACKEND_PORT 15; then
-            log "INFO" "Processo backend finalizado"
-        else
-            log "WARN" "Forçando finalização do backend..."
-            echo "$OLD_PIDS" | xargs -r $KILL_CMD -9 2>/dev/null || echo "$OLD_PIDS" | xargs -r kill -9 2>/dev/null || true
+        stop_backend_processes "$OLD_PIDS"
+    else
+        log "WARN" "Porta $BACKEND_PORT ocupada, mas não foi possível identificar o PID pelo padrão do uvicorn"
+        if [ -x "$FUSER_CMD" ]; then
+            sudo -n $FUSER_CMD -k "${BACKEND_PORT}/tcp" 2>/dev/null || $FUSER_CMD -k "${BACKEND_PORT}/tcp" 2>/dev/null || true
             $SLEEP_CMD 2 2>/dev/null || sleep 2
         fi
     fi
@@ -329,12 +370,12 @@ log "INFO" "Iniciando backend AutoCare..."
 backend_started_systemd=false
 if [ "$INIT_SYSTEM" = "systemd" ]; then
     if systemctl list-unit-files 2>/dev/null | grep -q "autocare-backend.service"; then
-        log "INFO" "Tentando iniciar via systemd..."
-        if sudo -n systemctl start autocare-backend 2>/dev/null; then
+        log "INFO" "Tentando reiniciar via systemd..."
+        if sudo -n systemctl restart autocare-backend 2>/dev/null; then
             sleep 3
             if sudo -n systemctl is-active --quiet autocare-backend; then
                 if wait_for_port $BACKEND_PORT 15; then
-                    log "SUCCESS" "Backend iniciado via systemd"
+                    log "SUCCESS" "Backend reiniciado via systemd"
                     BACKEND_STATUS="✅"
                     backend_started_systemd=true
                     # Não registrar PID quando iniciado via systemd (systemd gerencia o processo)

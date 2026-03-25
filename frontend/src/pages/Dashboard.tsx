@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { 
   Users, 
@@ -105,32 +106,52 @@ interface DashboardData {
 }
 
 // Hook personalizado para buscar dados do dashboard
-function useDashboardData(): { data: DashboardData | null, isLoading: boolean, error: any } {
+function useDashboardData(dataInicio?: string, dataFim?: string): { data: DashboardData | null, isLoading: boolean, error: any } {
   const resumoQuery = useQuery({
-    queryKey: ['dashboard-resumo'],
+    queryKey: ['dashboard-resumo', dataInicio, dataFim],
     queryFn: async () => {
-      return await apiFetch('/dashboard/resumo')
+      const params = new URLSearchParams()
+      if (dataInicio) params.append('data_inicio', dataInicio)
+      if (dataFim) params.append('data_fim', dataFim)
+      const queryString = params.toString()
+      const url = queryString ? `/dashboard/resumo?${queryString}` : '/dashboard/resumo'
+      return await apiFetch(url)
     }
   });
 
   const vendasQuery = useQuery({
-    queryKey: ['vendas-mensais'],
+    queryKey: ['vendas-mensais', dataInicio, dataFim],
     queryFn: async () => {
-      return await apiFetch('/dashboard/vendas-mensais')
+      const params = new URLSearchParams()
+      if (dataInicio) params.append('data_inicio', dataInicio)
+      if (dataFim) params.append('data_fim', dataFim)
+      const queryString = params.toString()
+      const url = queryString ? `/dashboard/vendas-mensais?${queryString}` : '/dashboard/vendas-mensais'
+      return await apiFetch(url)
     }
   });
 
   const ordensStatusQuery = useQuery({
-    queryKey: ['ordens-status'],
+    queryKey: ['ordens-status', dataInicio, dataFim],
     queryFn: async () => {
-      return await apiFetch('/dashboard/ordens-status')
+      const params = new URLSearchParams()
+      if (dataInicio) params.append('data_inicio', dataInicio)
+      if (dataFim) params.append('data_fim', dataFim)
+      const queryString = params.toString()
+      const url = queryString ? `/dashboard/ordens-status?${queryString}` : '/dashboard/ordens-status'
+      return await apiFetch(url)
     }
   });
 
   const alertasQuery = useQuery({
-    queryKey: ['dashboard-alertas'],
+    queryKey: ['dashboard-alertas', dataInicio, dataFim],
     queryFn: async () => {
-      return await apiFetch('/dashboard/alertas')
+      const params = new URLSearchParams()
+      if (dataInicio) params.append('data_inicio', dataInicio)
+      if (dataFim) params.append('data_fim', dataFim)
+      const queryString = params.toString()
+      const url = queryString ? `/dashboard/alertas?${queryString}` : '/dashboard/alertas'
+      return await apiFetch(url)
     }
   });
 
@@ -181,8 +202,18 @@ function useDashboardData(): { data: DashboardData | null, isLoading: boolean, e
 }
 
 export default function Dashboard() {
-  const { data, isLoading, error } = useDashboardData()
   const { hasPermission } = useAuth()
+  
+  // Estados para o intervalo de datas
+  const hoje = new Date()
+  const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+  const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+  
+  const formatoData = (data: Date) => data.toISOString().split('T')[0]
+  const [dataInicio, setDataInicio] = useState(formatoData(primeiroDiaMes))
+  const [dataFim, setDataFim] = useState(formatoData(ultimoDiaMes))
+  
+  const { data, isLoading, error } = useDashboardData(dataInicio, dataFim)
 
   // Verificar se o usuário tem permissão gerencial (pode ver valores de receita)
   const temPermissaoGerencial = hasPermission('dashboard_gerencial')
@@ -274,6 +305,48 @@ export default function Dashboard() {
         <div className="flex items-center text-sm text-gray-500">
           <Calendar className="w-4 h-4 mr-2" />
           {format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+        </div>
+      </div>
+
+      {/* Seletor de Data */}
+      <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Período de Análise
+            </label>
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-600 mb-1">Data Inicial</label>
+                <input
+                  type="date"
+                  value={dataInicio}
+                  onChange={(e) => setDataInicio(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-600 mb-1">Data Final</label>
+                <input
+                  type="date"
+                  value={dataFim}
+                  onChange={(e) => setDataFim(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+                  const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+                  setDataInicio(formatoData(primeiroDia))
+                  setDataFim(formatoData(ultimoDia))
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
+              >
+                Mês Atual
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

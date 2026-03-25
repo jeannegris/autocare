@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { useState } from 'react'
 import ConfirmModal from '../components/ConfirmModal'
 import ModalCompraFornecedor from '../components/ModalCompraFornecedor'
@@ -89,7 +89,7 @@ const Fornecedores: React.FC = () => {
   const [isDeleteCompraConfirmOpen, setIsDeleteCompraConfirmOpen] = useState(false)
   const [idCompraToDelete, setIdCompraToDelete] = useState<number | null>(null)
 
-  // Hook de valida????o
+  // Hook de validação
   const { erros, validarCampo, limparErro, limparTodosErros } = useValidacao()
 
   // useApi retorna o cliente axios
@@ -154,7 +154,7 @@ const Fornecedores: React.FC = () => {
         return next.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
       })
       queryClient.invalidateQueries({ queryKey: ['fornecedores'] })
-      // Atualizar o formul??rio com os dados salvos do servidor em vez de resetar
+      // Atualizar o formulário com os dados salvos do servidor em vez de resetar
       setFormData({
         nome: updated.nome,
         razao_social: updated.razao_social || '',
@@ -174,12 +174,12 @@ const Fornecedores: React.FC = () => {
     ,
     onError: (error: any) => {
       console.error('updateMutation.onError', error)
-      // manter modal aberto para o usu??rio corrigir caso de erro
+      // manter modal aberto para o usuário corrigir caso de erro
     }
   })
 
 
-  // Estado do modal de confirma????o de exclus??o
+  // Estado do modal de confirmação de exclus??o
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [idToDelete, setIdToDelete] = useState<number | null>(null)
 
@@ -189,7 +189,7 @@ const Fornecedores: React.FC = () => {
       const res = await api.delete(`/fornecedores/${id}`)
       return res.data
     },
-    // Usar optimistic update para garantir remo????o imediata da UI
+    // Usar optimistic update para garantir remoção imediata da UI
     onMutate: async (id: number) => {
       await queryClient.cancelQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'fornecedores' })
       // Snapshot dos valores anteriores para rollback
@@ -213,7 +213,7 @@ const Fornecedores: React.FC = () => {
       }
     },
     onSettled: () => {
-      // Garantir eventual consist??ncia
+      // Garantir eventual consistência
       queryClient.invalidateQueries({ queryKey: ['fornecedores'] })
     }
     
@@ -281,7 +281,7 @@ const Fornecedores: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validar campos obrigat??rios antes de submeter
+    // Validar campos obrigatórios antes de submeter
     let formValido = true
     
     // Validar CNPJ se preenchido
@@ -315,7 +315,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Fun????o para lidar com mudan??as no CNPJ
+  // Função para lidar com mudanças no CNPJ
   const handleCnpjChange = (value: string) => {
     const valorFormatado = aplicarMascara('CNPJ', value)
     setFormData({...formData, cnpj: valorFormatado})
@@ -327,7 +327,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Fun????o para lidar com mudan??as no telefone
+  // Função para lidar com mudanças no telefone
   const handleTelefoneChange = (value: string) => {
     const valorFormatado = aplicarMascara('telefone', value)
     setFormData({...formData, telefone: valorFormatado})
@@ -339,7 +339,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Fun????o para lidar com mudan??as no email
+  // Função para lidar com mudanças no email
   const handleEmailChange = (value: string) => {
     setFormData({...formData, email: value})
     
@@ -350,7 +350,7 @@ const Fornecedores: React.FC = () => {
     }
   }
 
-  // Fun????o para lidar com mudan??as no CEP
+  // Função para lidar com mudanças no CEP
   const handleCepChange = async (value: string) => {
     const valorFormatado = aplicarMascara('cep', value)
     setFormData({...formData, cep: valorFormatado})
@@ -425,7 +425,7 @@ const Fornecedores: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6">
-      {/* Cabe??alho */}
+      {/* Cabeçalho */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Fornecedores</h1>
         <p className="text-gray-600 mt-1">Gerencie fornecedores e compras</p>
@@ -455,7 +455,7 @@ const Fornecedores: React.FC = () => {
         </button>
       </div>
 
-      {/* Conte??do das abas */}
+      {/* Conteúdo das abas */}
       {activeTab === 'cadastro' ? (
         // ABA 1: CADASTRO DE FORNECEDORES
         <div>
@@ -517,13 +517,13 @@ const Fornecedores: React.FC = () => {
                       Contato
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Localiza????o
+                      Localização
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
                     <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      A????es
+                      Ações
                     </th>
                   </tr>
                 </thead>
@@ -773,7 +773,7 @@ const Fornecedores: React.FC = () => {
                   
                   {fornecedor.razao_social && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-500">Raz??o Social</label>
+                      <label className="block text-sm font-medium text-gray-500">Razão Social</label>
                       <p className="text-sm text-gray-900">{fornecedor.razao_social}</p>
                     </div>
                   )}
@@ -808,7 +808,7 @@ const Fornecedores: React.FC = () => {
                   
                   {fornecedor.endereco && (
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-500">Endere??o</label>
+                      <label className="block text-sm font-medium text-gray-500">Endereço</label>
                       <p className="text-sm text-gray-900">{fornecedor.endereco}</p>
                     </div>
                   )}
@@ -836,7 +836,7 @@ const Fornecedores: React.FC = () => {
                   
                   {fornecedor.observacoes && (
                     <div className="md:col-span-3">
-                      <label className="block text-sm font-medium text-gray-500">Observa????es</label>
+                      <label className="block text-sm font-medium text-gray-500">Observações</label>
                       <p className="text-sm text-gray-900">{fornecedor.observacoes}</p>
                     </div>
                   )}
@@ -847,7 +847,7 @@ const Fornecedores: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de cria????o/edi????o */}
+      {/* Modal de criação/edição */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -899,7 +899,7 @@ const Fornecedores: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Raz??o Social
+                      Razão Social
                     </label>
                     <input
                       type="text"
@@ -981,7 +981,7 @@ const Fornecedores: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Contato Respons??vel
+                      Contato Responsável
                     </label>
                     <input
                       type="text"
@@ -1014,7 +1014,7 @@ const Fornecedores: React.FC = () => {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Endere??o
+                      Endereço
                     </label>
                     <input
                       type="text"
@@ -1051,7 +1051,7 @@ const Fornecedores: React.FC = () => {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Observa????es
+                      Observações
                     </label>
                     <textarea
                       value={formData.observacoes}
@@ -1114,7 +1114,7 @@ const Fornecedores: React.FC = () => {
                       <p className="text-sm font-medium text-gray-900">{compra.fornecedor_nome || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-600 font-semibold">N?mero Nota</p>
+                      <p className="text-xs text-gray-600 font-semibold">Número Nota</p>
                       <p className="text-sm font-medium text-gray-900">{compra.numero_nota || '-'}</p>
                     </div>
                     <div>
@@ -1124,7 +1124,7 @@ const Fornecedores: React.FC = () => {
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-600 font-semibold">Usu?rio</p>
+                      <p className="text-xs text-gray-600 font-semibold">Usuário</p>
                       <p className="text-sm font-medium text-gray-900">{compra.usuario_nome || '-'}</p>
                     </div>
                   </div>
@@ -1153,7 +1153,7 @@ const Fornecedores: React.FC = () => {
 
                     {compra.observacoes && (
                       <div className="bg-gray-50 p-3 rounded text-sm">
-                        <p className="text-xs text-gray-600 font-semibold mb-1">Observa??es</p>
+                        <p className="text-xs text-gray-600 font-semibold mb-1">Observações</p>
                         <p className="text-gray-700">{compra.observacoes}</p>
                       </div>
                     )}
@@ -1179,7 +1179,7 @@ const Fornecedores: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Bot??es de a????o */}
+                  {/* Botões de ação */}
                   <div className="mt-6 pt-4 border-t flex gap-3">
                     <button
                       onClick={() => handleVerDetalhesCompra(compra.id)}
@@ -1210,7 +1210,7 @@ const Fornecedores: React.FC = () => {
             <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-bold">Detalhes da Compra</h2>
-                <p className="text-blue-100 text-sm mt-1">Nota: {detalhesCompra.numero_nota || 'Sem n?mero'}</p>
+                <p className="text-blue-100 text-sm mt-1">Nota: {detalhesCompra.numero_nota || 'Sem número'}</p>
               </div>
               <button
                 onClick={() => setDetalhesCompra(null)}
@@ -1227,7 +1227,7 @@ const Fornecedores: React.FC = () => {
                   <p className="text-gray-900 font-semibold">{detalhesCompra.fornecedor_nome || 'N/A'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">N??mero Nota</label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Número Nota</label>
                   <p className="text-gray-900 font-semibold">{detalhesCompra.numero_nota || '-'}</p>
                 </div>
                 <div>
@@ -1264,10 +1264,10 @@ const Fornecedores: React.FC = () => {
                 </div>
               </div>
 
-              {/* Observa????es */}
+              {/* Observações */}
               {detalhesCompra.observacoes && (
                 <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                  <label className="block text-sm font-medium text-gray-600 mb-2">Observa????es</label>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">Observações</label>
                   <p className="text-gray-700">{detalhesCompra.observacoes}</p>
                 </div>
               )}
@@ -1282,8 +1282,8 @@ const Fornecedores: React.FC = () => {
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Produto</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Quantidade</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Pre?o Custo</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Pre?o Venda</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Preço Custo</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Preço Venda</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Margem</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Total</th>
                         </tr>
@@ -1315,7 +1315,7 @@ const Fornecedores: React.FC = () => {
                 </div>
               )}
 
-              {/* Bot??es de a????o */}
+              {/* Botões de ação */}
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   onClick={() => setDetalhesCompra(null)}
@@ -1348,7 +1348,7 @@ const Fornecedores: React.FC = () => {
         onConfirm={confirmDeleteFornecedor}
       />
 
-      {/* Modal de sele????o de fornecedor para compra */}
+      {/* Modal de seleção de fornecedor para compra */}
       {showModalSelecionarFornecedor && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1369,7 +1369,7 @@ const Fornecedores: React.FC = () => {
               {fornecedores.length === 0 ? (
                 <div className="text-center py-8">
                   <Building className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p className="text-gray-600">Nenhum fornecedor dispon??vel</p>
+                  <p className="text-gray-600">Nenhum fornecedor disponível</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1388,10 +1388,10 @@ const Fornecedores: React.FC = () => {
                         <div className="text-xs text-gray-600 mt-1">CNPJ: {formatCNPJ(fornecedor.cnpj)}</div>
                       )}
                       {fornecedor.email && (
-                        <div className="text-xs text-gray-600 mt-1">?? {fornecedor.email}</div>
+                        <div className="text-xs text-gray-600 mt-1">Email: {fornecedor.email}</div>
                       )}
                       {fornecedor.telefone && (
-                        <div className="text-xs text-gray-600 mt-1">?? {aplicarMascara('telefone', fornecedor.telefone)}</div>
+                        <div className="text-xs text-gray-600 mt-1">Telefone: {aplicarMascara('telefone', fornecedor.telefone)}</div>
                       )}
                     </button>
                   ))}
@@ -1419,11 +1419,11 @@ const Fornecedores: React.FC = () => {
         />
       )}
 
-      {/* Modal de confirma????o de exclus??o de compra */}
+      {/* Modal de confirmação de exclus??o de compra */}
       <ConfirmModal
         isOpen={isDeleteCompraConfirmOpen}
         title="Excluir compra"
-        message="Tem certeza que deseja excluir esta compra de fornecedor? Esta a????o n??o pode ser desfeita."
+        message="Tem certeza que deseja excluir esta compra de fornecedor? Esta ação não pode ser desfeita."
         confirmText="Excluir"
         cancelText="Cancelar"
         onCancel={() => {

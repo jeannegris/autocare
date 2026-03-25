@@ -1,8 +1,13 @@
+ M backend/routes/autocare_dashboard.py
  M backend/routes/autocare_ordens.py
+ M backend/routes/autocare_relatorios.py
  M backend/schemas/schemas_ordem.py
- M backend/scripts/README.md
  M backup_log.txt
  M changes.txt
+ M frontend/src/pages/Clientes.tsx
+ M frontend/src/pages/Dashboard.tsx
+ M frontend/src/pages/Fornecedores.tsx
  M frontend/src/pages/OrdensServico.tsx
-?? backend/scripts/atualizar_formas_pagamento_os.py
-?? backend/scripts/ordens_pagamento.csv
+ M frontend/src/services/ordem-service.ts
+ M frontend/src/types/ordem-servico.ts
+ M start_services.sh

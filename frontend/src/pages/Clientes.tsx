@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { useState, useEffect, useRef } from 'react'
 import { Toaster, toast } from 'sonner'
 import { apiFetch } from '../lib/api'
@@ -99,14 +99,14 @@ function useClientes(periodo: string = 'T') {
       }
       return res as Cliente[]
     },
-    // Sempre buscar dados frescos ao montar/trocar per?odo
+    // Sempre buscar dados frescos ao montar/trocar período
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     staleTime: 0
   })
 }
 
-// Modal de formul?rio
+// Modal de formulário
 function ClienteModal({ 
   isOpen, 
   onClose, 
@@ -117,7 +117,7 @@ function ClienteModal({
   isOpen: boolean
   onClose: () => void
   cliente?: Cliente
-  clientePreenchido?: { cpf_cnpj?: string; telefone?: string; tipo: 'PF' | 'PJ' } | null
+  clientePreenchido?: { cpf_cnpj: string; telefone?: string; tipo: 'PF' | 'PJ' } | null
   onSubmit: (data: ClienteFormData) => void
 }) {
   const { erros, validarCampo, limparErro, limparTodosErros } = useValidacao()
@@ -150,15 +150,15 @@ function ClienteModal({
   const cpfCnpjRef = useRef<HTMLInputElement>(null)
   const telefoneRef = useRef<HTMLInputElement>(null)
 
-  // Sincroniza o estado do formul?rio com a prop `cliente` ou `clientePreenchido`
+  // Sincroniza o estado do formulário com a prop `cliente` ou `clientePreenchido`
   useEffect(() => {
-    // S? executa quando o modal abre (isOpen muda de false para true)
+    // Só executa quando o modal abre (isOpen muda de false para true)
     if (!isOpen) return
     
-    console.log('useEffect do formul?rio executando com cliente:', cliente)
+    console.log('useEffect do formulário executando com cliente:', cliente)
     
     if (cliente) {
-      console.log('Preenchendo formul?rio com dados do cliente:', {
+      console.log('Preenchendo formulário com dados do cliente:', {
         endereco: cliente.endereco,
         numero: cliente.numero,
         bairro: cliente.bairro,
@@ -190,7 +190,7 @@ function ClienteModal({
         observacoes: cliente.observacoes || ''
       })
     } else if (clientePreenchido) {
-      // Se h? dados pr?-preenchidos, use-os
+      // Se há dados pré-preenchidos, use-os
       setFormData({
         nome: '',
         email: '',
@@ -214,7 +214,7 @@ function ClienteModal({
         observacoes: ''
       })
     } else {
-      // Ao abrir modal para novo cliente, limpa o formul?rio
+      // Ao abrir modal para novo cliente, limpa o formulário
       setFormData({
         nome: '',
         email: '',
@@ -241,9 +241,9 @@ function ClienteModal({
     
     // Limpar erros ao abrir o modal
     limparTodosErros()
-  }, [cliente, clientePreenchido]) // Removido isOpen e limparTodosErros das depend?ncias
+  }, [cliente, clientePreenchido]) // Removido isOpen e limparTodosErros das dependências
 
-  // Auto-focus no primeiro campo com erro quando o estado de erros ? atualizado
+  // Auto-focus no primeiro campo com erro quando o estado de erros é atualizado
   useEffect(() => {
     if (Object.keys(erros).length > 0) {
       // Focar no primeiro campo com erro
@@ -260,10 +260,10 @@ function ClienteModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validar todos os campos obrigat?rios antes de submeter
+    // Validar todos os campos obrigatórios antes de submeter
     let formValido = true
     
-    // Validar Nome (obrigat?rio)
+    // Validar Nome (obrigatório)
     if (!formData.nome || !formData.nome.trim()) {
       validarCampo('nome', '', 'obrigatorio')
       formValido = false
@@ -281,23 +281,23 @@ function ClienteModal({
       validarCampo('telefone', '', 'obrigatorio')
       formValido = false
     } else {
-      // Se CPF/CNPJ est? preenchido, validar seu formato
+      // Se CPF/CNPJ está preenchido, validar seu formato
       if (cpfCnpjPreenchido) {
         if (!validarCampo('cpf_cnpj', formData.cpf_cnpj, formData.tipo === 'PF' ? 'CPF' : 'CNPJ')) {
           formValido = false
         }
       } else {
-        // CPF n?o preenchido, limpar erro
+        // CPF não preenchido, limpar erro
         limparErro('cpf_cnpj')
       }
       
-      // Se Telefone est? preenchido, validar seu formato
+      // Se Telefone está preenchido, validar seu formato
       if (telefonePreenchido) {
         if (!validarCampo('telefone', formData.telefone, 'telefone')) {
           formValido = false
         }
       } else {
-        // Telefone n?o preenchido, limpar erro
+        // Telefone não preenchido, limpar erro
         limparErro('telefone')
       }
     }
@@ -308,7 +308,7 @@ function ClienteModal({
         formValido = false
       }
     } else {
-      // Email n?o preenchido, limpar erro
+      // Email não preenchido, limpar erro
       limparErro('email')
     }
     
@@ -317,7 +317,7 @@ function ClienteModal({
     }
     
     if (formValido) {
-      // Preparar dados para envio (limpar m?scaras)
+      // Preparar dados para envio (limpar máscaras)
       const dadosParaEnvio = {
         ...formData,
         cpf_cnpj: formData.cpf_cnpj ? cleanDocumentForSubmit(formData.cpf_cnpj) : '',
@@ -327,17 +327,17 @@ function ClienteModal({
       }
       
       onSubmit(dadosParaEnvio)
-      // Modal ser? fechado ap?s sucesso da muta??o
+      // Modal será fechado após sucesso da mutação
     }
   }
 
-  // Fun??o para lidar com mudan?as no CPF/CNPJ
+  // Função para lidar com mudanças no CPF/CNPJ
   const handleCpfCnpjChange = (value: string) => {
-    // Aplicar m?scara de documento
+    // Aplicar máscara de documento
     handleDocumentInput(value, (maskedValue) => {
       setFormData({...formData, cpf_cnpj: maskedValue})
       
-      // Validar em tempo real se o campo n?o estiver vazio
+      // Validar em tempo real se o campo não estiver vazio
       if (maskedValue.trim()) {
         validarCampo('cpf_cnpj', maskedValue, formData.tipo === 'PF' ? 'CPF' : 'CNPJ')
       } else {
@@ -346,9 +346,9 @@ function ClienteModal({
     })
   }
 
-  // Fun??o para lidar com mudan?as no telefone
+  // Função para lidar com mudanças no telefone
   const handleTelefoneChange = (campo: 'telefone' | 'telefone2' | 'whatsapp', value: string) => {
-    // Aplicar m?scara de telefone
+    // Aplicar máscara de telefone
     handlePhoneInput(value, (maskedValue) => {
       setFormData({...formData, [campo]: maskedValue})
       
@@ -361,11 +361,11 @@ function ClienteModal({
     })
   }
 
-  // Fun??o para lidar com mudan?as no email
+  // Função para lidar com mudanças no email
   const handleEmailChange = (value: string) => {
     setFormData({...formData, email: value})
     
-    // Validar em tempo real se o campo n?o estiver vazio
+    // Validar em tempo real se o campo não estiver vazio
     if (value.trim()) {
       validarCampo('email', value, 'email')
     } else {
@@ -373,9 +373,9 @@ function ClienteModal({
     }
   }
 
-  // Fun??o para lidar com mudan?as no CEP
+  // Função para lidar com mudanças no CEP
   const handleCepChange = async (value: string) => {
-    // Aplicar m?scara de CEP diretamente
+    // Aplicar máscara de CEP diretamente
     const valorFormatado = value.replace(/\D/g, '').replace(/^(\d{5})(\d{3})$/, '$1-$2')
     setFormData({...formData, cep: valorFormatado})
     
@@ -428,8 +428,8 @@ function ClienteModal({
                 onChange={(e) => setFormData({...formData, tipo: e.target.value as 'PF' | 'PJ'})}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="PF">Pessoa F?sica</option>
-                <option value="PJ">Pessoa Jur?dica</option>
+                  <option value="PF">Pessoa Física</option>
+                  <option value="PJ">Pessoa Jurídica</option>
               </select>
             </div>
           </div>
@@ -438,7 +438,7 @@ function ClienteModal({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {formData.tipo === 'PF' ? 'Nome Completo' : 'Raz?o Social'} *
+                {formData.tipo === 'PF' ? 'Nome Completo' : 'Razão Social'} *
               </label>
               <input
                 ref={nomeRef}
@@ -458,7 +458,7 @@ function ClienteModal({
                     ? 'border-red-300 focus:ring-red-500' 
                     : 'border-gray-300 focus:ring-blue-500'
                 }`}
-                placeholder={formData.tipo === 'PF' ? 'Ex: Jo?o Silva Santos' : 'Ex: Empresa XYZ Ltda'}
+                placeholder={formData.tipo === 'PF' ? 'Ex: João Silva Santos' : 'Ex: Empresa XYZ Ltda'}
               />
               {erros.nome && (
                 <p className="mt-1 text-sm text-red-600 flex items-center">
@@ -476,7 +476,7 @@ function ClienteModal({
                   value={formData.nome_fantasia || ''}
                   onChange={(e) => setFormData({...formData, nome_fantasia: e.target.value})}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Ex: Auto Pe?as XYZ"
+                  placeholder="Ex: Auto Peças XYZ"
                 />
               </div>
             )}
@@ -510,7 +510,7 @@ function ClienteModal({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {formData.tipo === 'PF' ? 'RG' : 'Inscri??o Estadual'}
+                {formData.tipo === 'PF' ? 'RG' : 'Inscrição Estadual'}
               </label>
               <input
                 type="text"
@@ -535,7 +535,7 @@ function ClienteModal({
 
             {formData.tipo === 'PJ' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contato Respons?vel</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contato Responsável</label>
                 <input
                   type="text"
                   value={formData.contato_responsavel || ''}
@@ -572,7 +572,7 @@ function ClienteModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Telefone Secund?rio</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Telefone Secundário</label>
               <input
                 type="text"
                 value={formData.telefone2 || ''}
@@ -616,9 +616,9 @@ function ClienteModal({
             )}
           </div>
 
-          {/* Endere?o */}
+          {/* Endereço */}
           <div className="space-y-4">
-            <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Endere?o</h4>
+            <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Endereço</h4>
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-1">
@@ -654,7 +654,7 @@ function ClienteModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">N?mero</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Número</label>
                 <input
                   type="text"
                   value={formData.numero}
@@ -695,7 +695,7 @@ function ClienteModal({
                   value={formData.cidade}
                   onChange={(e) => setFormData({...formData, cidade: e.target.value})}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="S?o Paulo"
+                  placeholder="São Paulo"
                 />
               </div>
 
@@ -712,19 +712,19 @@ function ClienteModal({
             </div>
           </div>
 
-          {/* Observa??es */}
+          {/* Observações */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Observa??es</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
             <textarea
               value={formData.observacoes || ''}
               onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
               className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               rows={3}
-              placeholder="Informa??es adicionais sobre o cliente..."
+              placeholder="Informações adicionais sobre o cliente..."
             />
           </div>
 
-          {/* Bot?es */}
+          {/* Botões */}
           <div className="flex justify-end space-x-3 pt-6 border-t">
             <button
               type="button"
@@ -751,37 +751,37 @@ export default function Clientes() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | undefined>()
   const [filtroTipo, setFiltroTipo] = useState<'TODOS' | 'PF' | 'PJ'>('TODOS')
-  // Controle de per?odo por cliente: { [clienteId]: 'T' | 'A' | 'M' }
+  // Controle de período por cliente: { [clienteId]: 'T' | 'A' | 'M' }
   const [periodoPorCliente, setPeriodoPorCliente] = useState<Record<number, 'T' | 'A' | 'M'>>({})
-  // Cache de estat?sticas por cliente e per?odo: { [clienteId]: { T?: Stats; A?: Stats; M?: Stats } }
+  // Cache de estatísticas por cliente e período: { [clienteId]: { T?: Stats; A?: Stats; M?: Stats } }
   type Stats = { total_gasto: number; total_servicos: number; veiculos_count?: number }
   const [statsPorCliente, setStatsPorCliente] = useState<Record<number, { T?: Stats; A?: Stats; M?: Stats }>>({})
   const [loadingStatsCliente, setLoadingStatsCliente] = useState<Record<number, boolean>>({})
   
-  // Estados para o novo modal de verifica??o
+  // Estados para o novo modal de verificação
   const [isVerificacaoModalOpen, setIsVerificacaoModalOpen] = useState(false)
   const [clientePreenchido, setClientePreenchido] = useState<{
-    cpf_cnpj?: string
+    cpf_cnpj: string
     telefone?: string
     tipo: 'PF' | 'PJ'
   } | null>(null)
 
   const queryClient = useQueryClient()
-  // Buscamos a lista de clientes com per?odo padr?o Total (T)
+  // Buscamos a lista de clientes com período padrão Total (T)
   const { data: clientes = [], isLoading, error } = useClientes('T')
   const [pendingReactivation, setPendingReactivation] = useState<{
     existingId: number
     message: string
   } | null>(null)
 
-  // Guardar o ?ltimo payload de cria??o para usar no fallback em caso de erro
+  // Guardar o último payload de criação para usar no fallback em caso de erro
   const lastCreatePayload = useRef<ClienteFormData | null>(null)
   const [deletePending, setDeletePending] = useState<{
     id: number
     nome?: string
   } | null>(null)
 
-  // Muta??o para criar cliente
+  // Mutação para criar cliente
   const createMutation = useMutation({
     mutationFn: async (data: ClienteFormData) => {
       return await apiFetch('/clientes', {
@@ -795,18 +795,18 @@ export default function Clientes() {
       toast.success('Cliente criado com sucesso')
       // limpar payload guardado
       lastCreatePayload.current = null
-      // Fechar modal apenas ap?s sucesso
+      // Fechar modal apenas após sucesso
       setEditingCliente(undefined)
       setIsModalOpen(false)
     },
     onError: async (err: any) => {
       console.error('Erro ao criar cliente', err)
-      // Se backend indicou existing_id (409), oferecer reativa??o
+      // Se backend indicou existing_id (409), oferecer reativação
       const parsed = err?.json || (err?.body ? (() => { try { return JSON.parse(err.body) } catch { return null } })() : null)
       if (err?.status === 409 && parsed?.existing_id) {
         const existingId = parsed.existing_id
         const ativo = parsed.ativo
-        const msg = parsed.message || 'CPF/CNPJ j? cadastrado'
+        const msg = parsed.message || 'CPF/CNPJ já cadastrado'
         if (!ativo) {
           setPendingReactivation({ existingId: existingId, message: msg })
           return
@@ -819,8 +819,8 @@ export default function Clientes() {
       // podemos tentar localizar o cliente existente via busca para obter o id e estado.
       try {
         const txt = parsed?.detail || parsed?.message || err?.body || err?.message || ''
-        if (/cpf|cnpj/i.test(txt) && /j? cadastrado/i.test(txt)) {
-          // Usar o payload que foi enviado na tentativa de cria??o para localizar o cliente
+        if (/cpf|cnpj/i.test(txt) && /já cadastrado/i.test(txt)) {
+          // Usar o payload que foi enviado na tentativa de criação para localizar o cliente
           const payloadCpf = lastCreatePayload.current?.cpf_cnpj || ''
           const searchTerm = payloadCpf || ''
           if (searchTerm) {
@@ -829,10 +829,10 @@ export default function Clientes() {
               const found = results.find((c: any) => c.cpf_cnpj && c.cpf_cnpj.replace(/\D/g,'') === searchTerm.replace(/\D/g,''))
               if (found) {
                 if (!found.ativo) {
-                  setPendingReactivation({ existingId: found.id, message: 'CPF/CNPJ j? cadastrado' })
+                  setPendingReactivation({ existingId: found.id, message: 'CPF/CNPJ já cadastrado' })
                   return
                 }
-                toast.error('CPF/CNPJ j? cadastrado (registro ativo)')
+                toast.error('CPF/CNPJ já cadastrado (registro ativo)')
                 return
               }
             }
@@ -846,7 +846,7 @@ export default function Clientes() {
     }
   })
 
-  // Muta??o para atualizar cliente
+  // Mutação para atualizar cliente
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: ClienteFormData }) => {
       console.log('updateMutation executando para ID:', id, 'com data:', data)
@@ -855,14 +855,14 @@ export default function Clientes() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       }) as Cliente
-      console.log('Resposta da API de atualiza??o:', response)
+      console.log('Resposta da API de atualização:', response)
       return response
     },
     onSuccess: (data) => {
       console.log('Update bem-sucedido, dados retornados:', data)
       queryClient.invalidateQueries({ queryKey: ['clientes'] })
       toast.success('Cliente atualizado com sucesso')
-      // Fechar modal apenas ap?s sucesso
+      // Fechar modal apenas após sucesso
       setEditingCliente(undefined)
       setIsModalOpen(false)
     },
@@ -872,19 +872,19 @@ export default function Clientes() {
     }
   })
 
-  // Muta??o para deletar cliente
+  // Mutação para deletar cliente
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       // Retornar o JSON do backend (agora o backend retorna o cliente atualizado)
       return await apiFetch(`/clientes/${id}`, { method: 'DELETE' })
     },
     onSuccess: () => {
-      // Invalidar cache para for?ar re-fetch
+      // Invalidar cache para forçar re-fetch
       queryClient.invalidateQueries({ queryKey: ['clientes'] })
-      toast.success('Cliente exclu?do com sucesso')
+      toast.success('Cliente excluído com sucesso')
     },
     onSettled: () => {
-      // Ap?s settled apenas invalidamos/permitimos re-fetch (sem logs)
+      // Após settled apenas invalidamos/permitimos re-fetch (sem logs)
     },
     onError: (err: any) => {
       console.error('Erro ao deletar cliente', err)
@@ -892,9 +892,9 @@ export default function Clientes() {
     }
   })
 
-  // Sanitiza dados do formul?rio: remove chaves cujo valor ? string vazia.
+  // Sanitiza dados do formulário: remove chaves cujo valor é string vazia.
   // Isso evita que campos como `data_nascimento: ""` sejam enviados e
-  // causem valida??o 422 no backend (pydantic espera `date` ou aus?ncia/null).
+  // causem validação 422 no backend (pydantic espera `date` ou ausência/null).
   const sanitizeClienteData = (data: ClienteFormData) => {
     const copy: any = { ...data }
     Object.keys(copy).forEach((k) => {
@@ -904,7 +904,7 @@ export default function Clientes() {
         return
       }
 
-        // Converter data_nascimento para ISO (YYYY-MM-DD) se for uma string n?o vazia
+        // Converter data_nascimento para ISO (YYYY-MM-DD) se for uma string não vazia
         if (k === 'data_nascimento' && typeof copy[k] === 'string') {
           try {
             const d = new Date(copy[k])
@@ -912,7 +912,7 @@ export default function Clientes() {
               // Garantir formato YYYY-MM-DD
               copy[k] = d.toISOString().slice(0, 10)
             } else {
-              // Se n?o for uma data v?lida, remover para evitar 422
+              // Se não for uma data válida, remover para evitar 422
               delete copy[k]
             }
           } catch (e) {
@@ -959,7 +959,7 @@ export default function Clientes() {
       lastCreatePayload.current = payload as ClienteFormData
       createMutation.mutate(payload as any)
     }
-    // N?O limpar editingCliente imediatamente - aguardar sucesso da muta??o
+    // NÃO limpar editingCliente imediatamente - aguardar sucesso da mutação
     // setEditingCliente(undefined)
   }
 
@@ -983,25 +983,25 @@ export default function Clientes() {
     setDeletePending({ id, nome })
   }
 
-  // Fun??o para abrir o modal de verifica??o de cliente
+  // Função para abrir o modal de verificação de cliente
   const abrirNovoCliente = () => {
     setIsVerificacaoModalOpen(true)
   }
 
-  // Fun??o chamada quando um cliente ativo ? encontrado
+  // Função chamada quando um cliente ativo é encontrado
   const handleClienteEncontrado = (cliente: any) => {
     setIsVerificacaoModalOpen(false)
     setEditingCliente(cliente)
     setIsModalOpen(true)
   }
 
-  // Fun??o chamada quando nenhum cliente ? encontrado
+  // Função chamada quando nenhum cliente é encontrado
   const handleCriarNovo = (cpfCnpj: string, tipo: 'CPF' | 'CNPJ' | 'TELEFONE') => {
     const clienteData: any = {
       tipo: tipo === 'CPF' ? 'PF' : tipo === 'CNPJ' ? 'PJ' : 'PF'
     }
     
-    // Se for telefone, preencher o campo telefone ao inv?s de CPF
+    // Se for telefone, preencher o campo telefone ao invés de CPF
     if (tipo === 'TELEFONE') {
       clienteData.telefone = cpfCnpj
     } else {
@@ -1014,7 +1014,7 @@ export default function Clientes() {
     setIsModalOpen(true)
   }
 
-  // Fun??o chamada quando um cliente inativo precisa ser reativado
+  // Função chamada quando um cliente inativo precisa ser reativado
   const handleReativar = async (cliente: any) => {
     try {
       await apiFetch(`/clientes/${cliente.id}/reativar`, {
@@ -1023,7 +1023,7 @@ export default function Clientes() {
       toast.success('Cliente reativado com sucesso!')
       queryClient.invalidateQueries({ queryKey: ['clientes'] })
       setIsVerificacaoModalOpen(false)
-      // Resetar estados para pr?xima abertura do modal
+      // Resetar estados para próxima abertura do modal
       setClientePreenchido(null)
     } catch (error) {
       console.error('Erro ao reativar cliente:', error)
@@ -1037,8 +1037,8 @@ export default function Clientes() {
 
   const safeClientes = Array.isArray(clientes) ? clientes : []
 
-  // Sincroniza o cache de estat?sticas (slot T) com os valores retornados na lista
-  // para garantir que o per?odo "Total" do card sempre reflita a API atual.
+  // Sincroniza o cache de estatísticas (slot T) com os valores retornados na lista
+  // para garantir que o período "Total" do card sempre reflita a API atual.
   useEffect(() => {
     if (!safeClientes || safeClientes.length === 0) return
     setStatsPorCliente((prev) => {
@@ -1056,11 +1056,11 @@ export default function Clientes() {
     })
   }, [safeClientes])
 
-  // Handler para mudar o per?odo de um cliente espec?fico
+  // Handler para mudar o período de um cliente específico
   const handlePeriodoChange = async (clienteId: number, periodo: 'T' | 'A' | 'M') => {
-    // Atualiza o estado visual do per?odo selecionado para o card
+    // Atualiza o estado visual do período selecionado para o card
     setPeriodoPorCliente((prev) => ({ ...prev, [clienteId]: periodo }))
-    // Se j? temos cache para esse per?odo, n?o buscar novamente
+    // Se já temos cache para esse período, não buscar novamente
     const cached = statsPorCliente[clienteId]?.[periodo]
     if (cached !== undefined) return
     try {
@@ -1077,7 +1077,7 @@ export default function Clientes() {
       }))
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('Falha ao obter estat?sticas do cliente', clienteId, 'per?odo', periodo, e)
+      console.error('Falha ao obter estatísticas do cliente', clienteId, 'período', periodo, e)
     } finally {
       setLoadingStatsCliente((prev) => ({ ...prev, [clienteId]: false }))
     }
@@ -1120,7 +1120,7 @@ export default function Clientes() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Gest├úo de Clientes</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Gestão de Clientes</h1>
           <p className="text-gray-600 mt-1">
             {clientes.length} cliente{clientes.length !== 1 ? 's' : ''} cadastrado{clientes.length !== 1 ? 's' : ''}
           </p>
@@ -1155,8 +1155,8 @@ export default function Clientes() {
           className="border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="TODOS">Todos os tipos</option>
-          <option value="PF">Pessoa F?sica</option>
-          <option value="PJ">Pessoa Jur?dica</option>
+          <option value="PF">Pessoa Física</option>
+          <option value="PJ">Pessoa Jurídica</option>
         </select>
       </div>
 
@@ -1186,7 +1186,7 @@ export default function Clientes() {
                             ? 'bg-blue-100 text-blue-800' 
                             : 'bg-green-100 text-green-800'
                         }`}>
-                          {cliente.tipo === 'PF' ? 'Pessoa F?sica' : 'Pessoa Jur?dica'}
+                          {cliente.tipo === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
                         </span>
                         {cliente.data_nascimento && (
                           <span className="inline-flex items-center text-xs text-pink-600 bg-pink-100 px-2 py-1 rounded-full">
@@ -1227,7 +1227,7 @@ export default function Clientes() {
                       </div>
                     </div>
 
-                    {/* Estat?sticas do Cliente */}
+                    {/* Estatísticas do Cliente */}
                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="bg-gray-50 rounded-lg p-3">
                         <div className="flex items-center justify-between">
@@ -1287,7 +1287,7 @@ export default function Clientes() {
 
                       <div className="bg-gray-50 rounded-lg p-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-600">Ve?culos</span>
+                          <span className="text-sm font-medium text-gray-600">Veículos</span>
                           <Car className="h-4 w-4 text-purple-600" />
                         </div>
                         <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">
@@ -1299,7 +1299,7 @@ export default function Clientes() {
                     {cliente.ultima_visita && (
                       <div className="mt-3 text-sm text-gray-500">
                         <Calendar className="inline h-4 w-4 mr-1" />
-                        ?ltima visita: {format(new Date(cliente.ultima_visita), "dd/MM/yyyy", { locale: ptBR })}
+                        Última visita: {format(new Date(cliente.ultima_visita), "dd/MM/yyyy", { locale: ptBR })}
                       </div>
                     )}
 
@@ -1313,7 +1313,7 @@ export default function Clientes() {
                   </div>
                 </div>
 
-                {/* A??es - Agora responsivo para mobile */}
+                {/* Ações - Agora responsivo para mobile */}
                 <div className="flex items-center justify-end lg:justify-start space-x-2 lg:ml-4 mt-4 lg:mt-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-200">
                   <button
                     onClick={() => handleEdit(cliente)}
@@ -1324,7 +1324,7 @@ export default function Clientes() {
                   </button>
                   <button
                     className="text-gray-600 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-50"
-                    title="Ver hist?rico"
+                    title="Ver histórico"
                   >
                     <Eye className="h-4 w-4" />
                   </button>
@@ -1378,7 +1378,7 @@ export default function Clientes() {
         </div>
       )}
 
-      {/* Modal de Verifica??o de Cliente */}
+      {/* Modal de Verificação de Cliente */}
       <ModalVerificacaoCliente
         isOpen={isVerificacaoModalOpen}
         onClose={() => setIsVerificacaoModalOpen(false)}
@@ -1409,7 +1409,7 @@ export default function Clientes() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="text-sm text-gray-600 mt-2">Um cliente com o mesmo CPF/CNPJ j? existe no sistema. Deseja reativ?-lo?</p>
+            <p className="text-sm text-gray-600 mt-2">Um cliente com o mesmo CPF/CNPJ já existe no sistema. Deseja reativá-lo?</p>
             <div className="mt-4 flex justify-end gap-3">
               <button
                 className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200"
@@ -1445,12 +1445,12 @@ export default function Clientes() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
             <div className="flex items-start justify-between">
-              <h2 className="text-lg font-semibold">Confirmar exclus?o</h2>
+              <h2 className="text-lg font-semibold">Confirmar exclusão</h2>
               <button onClick={() => setDeletePending(null)} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="text-sm text-gray-600 mt-2">Tem certeza que deseja excluir o cliente <strong>{deletePending.nome}</strong>? Esta a??o apenas marcar? o cliente como inativo.</p>
+            <p className="text-sm text-gray-600 mt-2">Tem certeza que deseja excluir o cliente <strong>{deletePending.nome}</strong>? Esta ação apenas marcará o cliente como inativo.</p>
             <div className="mt-4 flex justify-end gap-3">
               <button
                 className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200"
@@ -1466,7 +1466,7 @@ export default function Clientes() {
                     await deleteMutation.mutateAsync(deletePending.id)
                     setDeletePending(null)
                   } catch (e) {
-                    // erro j? tratado em onError do mutation
+                    // erro já tratado em onError do mutation
                     setDeletePending(null)
                   }
                 }}

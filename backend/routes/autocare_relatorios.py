@@ -23,6 +23,34 @@ from models.autocare_models import (
 
 router = APIRouter()
 
+
+def formatar_data_br(valor, incluir_hora: bool = False) -> str:
+    if not valor:
+        return "-"
+
+    try:
+        data = datetime.fromisoformat(str(valor).replace('Z', '+00:00'))
+        return data.strftime('%d/%m/%Y %H:%M' if incluir_hora else '%d/%m/%Y')
+    except (TypeError, ValueError):
+        return str(valor)
+
+
+def converter_coluna_data_excel(dataframe: pd.DataFrame, coluna: str):
+    if coluna in dataframe.columns:
+        dataframe[coluna] = pd.to_datetime(dataframe[coluna], utc=True, errors='coerce').dt.tz_localize(None)
+
+
+def aplicar_formato_data_excel(worksheet, coluna: str, incluir_hora: bool = False):
+    formato = 'dd/mm/yyyy hh:mm' if incluir_hora else 'dd/mm/yyyy'
+    for cell in worksheet[coluna][1:]:
+        if cell.value:
+            cell.number_format = formato
+
+
+def ajustar_largura_colunas(worksheet, larguras: dict[str, int]):
+    for coluna, largura in larguras.items():
+        worksheet.column_dimensions[coluna].width = largura
+
 @router.get("/vendas")
 def relatorio_vendas(
     data_inicio: str,
@@ -219,41 +247,45 @@ def relatorio_movimentacao_estoque(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Formato de data inválido"
         )
-    
+
+    data_referencia = func.coalesce(MovimentoEstoque.data_movimentacao, MovimentoEstoque.created_at)
+
     query = db.query(
-        MovimentoEstoque.data_movimento,
+        data_referencia.label('data_movimento'),
         Produto.codigo.label('produto_codigo'),
         Produto.nome.label('produto_nome'),
         MovimentoEstoque.tipo,
         MovimentoEstoque.quantidade,
         MovimentoEstoque.preco_unitario,
+        MovimentoEstoque.valor_total,
         MovimentoEstoque.motivo,
-        MovimentoEstoque.documento,
+        MovimentoEstoque.observacoes,
+        MovimentoEstoque.ordem_servico_id,
         Fornecedor.nome.label('fornecedor')
     ).join(
-        Produto, MovimentoEstoque.produto_id == Produto.id
+        Produto, MovimentoEstoque.item_id == Produto.id
     ).outerjoin(
         Fornecedor, MovimentoEstoque.fornecedor_id == Fornecedor.id
     ).filter(
-        func.date(MovimentoEstoque.data_movimento).between(inicio, fim)
+        func.date(data_referencia).between(inicio, fim)
     )
-    
+
     if produto_id:
-        query = query.filter(MovimentoEstoque.produto_id == produto_id)
-    
+        query = query.filter(MovimentoEstoque.item_id == produto_id)
+
     if tipo:
-        query = query.filter(MovimentoEstoque.tipo == tipo)
-    
-    movimentos = query.order_by(MovimentoEstoque.data_movimento.desc()).all()
-    
+        query = query.filter(func.upper(MovimentoEstoque.tipo) == tipo.upper())
+
+    movimentos = query.order_by(data_referencia.desc()).all()
+
     # Calcular totais
     total_entradas = sum(
-        float(mov.quantidade) for mov in movimentos if mov.tipo == "entrada"
+        float(mov.quantidade) for mov in movimentos if (mov.tipo or '').upper() == "ENTRADA"
     )
     total_saidas = sum(
-        float(mov.quantidade) for mov in movimentos if mov.tipo == "saida"
+        float(mov.quantidade) for mov in movimentos if (mov.tipo or '').upper() == "SAIDA"
     )
-    
+
     dados = {
         "periodo": {
             "data_inicio": inicio.isoformat(),
@@ -269,20 +301,33 @@ def relatorio_movimentacao_estoque(
                 "data": mov.data_movimento.isoformat(),
                 "produto_codigo": mov.produto_codigo,
                 "produto_nome": mov.produto_nome,
-                "tipo": mov.tipo,
+                "tipo": (mov.tipo or '').lower(),
                 "quantidade": float(mov.quantidade),
                 "preco_unitario": float(mov.preco_unitario) if mov.preco_unitario else 0,
-                "valor_total": float(mov.quantidade * (mov.preco_unitario or 0)),
+                "valor_total": float(mov.valor_total) if mov.valor_total is not None else float(mov.quantidade * (mov.preco_unitario or 0)),
                 "motivo": mov.motivo,
-                "documento": mov.documento,
+                "documento": f"OS {mov.ordem_servico_id}" if mov.ordem_servico_id else None,
+                "observacoes": mov.observacoes,
                 "fornecedor": mov.fornecedor
             }
             for mov in movimentos
         ]
     }
-    
+
     if formato == "json":
         return dados
+
+    elif formato == "excel":
+        return gerar_excel_movimentacao_estoque(dados)
+
+    elif formato == "pdf":
+        return gerar_pdf_movimentacao_estoque(dados)
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato não suportado. Use: json, excel ou pdf"
+        )
 
 def gerar_excel_vendas(dados):
     """Gerar relatório de vendas em Excel"""
@@ -290,12 +335,55 @@ def gerar_excel_vendas(dados):
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         # Aba resumo
-        resumo_df = pd.DataFrame([dados["resumo"]])
+        resumo_excel = {
+            "Data Inicial": formatar_data_br(dados['periodo']['data_inicio']),
+            "Data Final": formatar_data_br(dados['periodo']['data_fim']),
+            "Total de Ordens": dados['resumo']['total_ordens'],
+            "Faturamento Total": dados['resumo']['total_faturamento'],
+            "Total Produtos": dados['resumo']['total_produtos'],
+            "Total Serviços": dados['resumo']['total_servicos'],
+            "Ticket Médio": dados['resumo']['ticket_medio'],
+        }
+        resumo_df = pd.DataFrame([resumo_excel])
         resumo_df.to_excel(writer, sheet_name='Resumo', index=False)
         
         # Aba detalhes
         ordens_df = pd.DataFrame(dados["ordens"])
+        if not ordens_df.empty:
+            converter_coluna_data_excel(ordens_df, 'data_abertura')
+            converter_coluna_data_excel(ordens_df, 'data_conclusao')
+            ordens_df = ordens_df.rename(columns={
+                'numero': 'Número',
+                'data_abertura': 'Data Abertura',
+                'data_conclusao': 'Data Conclusão',
+                'cliente': 'Cliente',
+                'veiculo': 'Veículo',
+                'status': 'Status',
+                'valor_produtos': 'Valor Produtos',
+                'valor_servicos': 'Valor Serviços',
+                'valor_total': 'Valor Total',
+                'desconto': 'Desconto',
+                'valor_final': 'Valor Final'
+            })
         ordens_df.to_excel(writer, sheet_name='Detalhes', index=False)
+
+        detalhes_ws = writer.sheets['Detalhes']
+        if not ordens_df.empty:
+            aplicar_formato_data_excel(detalhes_ws, 'B', incluir_hora=True)
+            aplicar_formato_data_excel(detalhes_ws, 'C', incluir_hora=True)
+        ajustar_largura_colunas(detalhes_ws, {
+            'A': 14,
+            'B': 19,
+            'C': 19,
+            'D': 28,
+            'E': 32,
+            'F': 18,
+            'G': 16,
+            'H': 16,
+            'I': 16,
+            'J': 14,
+            'K': 16,
+        })
     
     output.seek(0)
     
@@ -321,7 +409,7 @@ def gerar_pdf_vendas(dados):
     story.append(Spacer(1, 12))
     
     # Período
-    periodo_text = f"Período: {dados['periodo']['data_inicio']} a {dados['periodo']['data_fim']}"
+    periodo_text = f"Período: {formatar_data_br(dados['periodo']['data_inicio'])} a {formatar_data_br(dados['periodo']['data_fim'])}"
     story.append(Paragraph(periodo_text, styles['Normal']))
     story.append(Spacer(1, 12))
     
@@ -355,19 +443,19 @@ def gerar_pdf_vendas(dados):
         story.append(Paragraph("Detalhes das Ordens (primeiras 20)", styles['Heading2']))
         story.append(Spacer(1, 12))
         
-        headers = ['Número', 'Cliente', 'Veículo', 'Status', 'Valor Final']
+        headers = ['Número', 'Abertura', 'Cliente', 'Status', 'Valor Final']
         detalhes_data = [headers]
         
         for ordem in dados['ordens'][:20]:
             detalhes_data.append([
                 ordem['numero'],
+                formatar_data_br(ordem['data_abertura'], incluir_hora=True),
                 ordem['cliente'][:20] + '...' if len(ordem['cliente']) > 20 else ordem['cliente'],
-                ordem['veiculo'][:15] + '...' if len(ordem['veiculo']) > 15 else ordem['veiculo'],
                 ordem['status'],
                 f"R$ {ordem['valor_final']:.2f}"
             ])
         
-        detalhes_table = Table(detalhes_data, colWidths=[1*inch, 2*inch, 1.5*inch, 1*inch, 1*inch])
+        detalhes_table = Table(detalhes_data, colWidths=[1*inch, 1.3*inch, 2.2*inch, 1.2*inch, 1.1*inch])
         detalhes_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -396,12 +484,51 @@ def gerar_excel_estoque(dados):
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         # Aba resumo
-        resumo_df = pd.DataFrame([dados["resumo"]])
+        resumo_excel = {
+            "Data Relatório": pd.to_datetime(dados['data_relatorio'], utc=True, errors='coerce').tz_localize(None),
+            "Total de Produtos": dados['resumo']['total_produtos'],
+            "Valor Total Estoque": dados['resumo']['valor_total_estoque'],
+            "Produtos Estoque Baixo": dados['resumo']['produtos_estoque_baixo'],
+        }
+        resumo_df = pd.DataFrame([resumo_excel])
         resumo_df.to_excel(writer, sheet_name='Resumo', index=False)
         
         # Aba produtos
         produtos_df = pd.DataFrame(dados["produtos"])
+        if not produtos_df.empty:
+            produtos_df = produtos_df.rename(columns={
+                'codigo': 'Código',
+                'nome': 'Produto',
+                'descricao': 'Descrição',
+                'preco_custo': 'Preço Custo',
+                'preco_venda': 'Preço Venda',
+                'quantidade_atual': 'Quantidade Atual',
+                'quantidade_minima': 'Quantidade Mínima',
+                'unidade': 'Unidade',
+                'localizacao': 'Localização',
+                'valor_estoque': 'Valor Estoque',
+                'situacao': 'Situação'
+            })
         produtos_df.to_excel(writer, sheet_name='Produtos', index=False)
+
+        resumo_ws = writer.sheets['Resumo']
+        aplicar_formato_data_excel(resumo_ws, 'A', incluir_hora=True)
+        ajustar_largura_colunas(resumo_ws, {'A': 20, 'B': 18, 'C': 20, 'D': 22})
+
+        produtos_ws = writer.sheets['Produtos']
+        ajustar_largura_colunas(produtos_ws, {
+            'A': 12,
+            'B': 30,
+            'C': 36,
+            'D': 14,
+            'E': 14,
+            'F': 16,
+            'G': 16,
+            'H': 12,
+            'I': 18,
+            'J': 16,
+            'K': 14,
+        })
     
     output.seek(0)
     
@@ -415,6 +542,196 @@ def gerar_excel_estoque(dados):
 
 def gerar_pdf_estoque(dados):
     """Gerar relatório de estoque em PDF"""
-    # Similar ao PDF de vendas, mas para estoque
-    # Implementação simplificada
-    pass
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+
+    doc = SimpleDocTemplate(temp_file.name, pagesize=A4)
+    story = []
+    styles = getSampleStyleSheet()
+
+    story.append(Paragraph("Relatório de Estoque", styles['Title']))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(
+        f"Data do relatório: {formatar_data_br(dados['data_relatorio'], incluir_hora=True)}",
+        styles['Normal']
+    ))
+    story.append(Spacer(1, 12))
+
+    resumo = dados['resumo']
+    resumo_data = [
+        ['Total de Produtos', str(resumo['total_produtos'])],
+        ['Valor Total Estoque', f"R$ {resumo['valor_total_estoque']:.2f}"],
+        ['Produtos Estoque Baixo', str(resumo['produtos_estoque_baixo'])],
+    ]
+    resumo_table = Table(resumo_data, colWidths=[2.2 * inch, 2.2 * inch])
+    resumo_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+    ]))
+    story.append(resumo_table)
+    story.append(Spacer(1, 18))
+
+    if dados['produtos']:
+        story.append(Paragraph("Produtos (primeiros 30 registros)", styles['Heading2']))
+        story.append(Spacer(1, 8))
+
+        tabela_data = [['Código', 'Produto', 'Qtd', 'Mín.', 'Situação']]
+        for produto in dados['produtos'][:30]:
+            tabela_data.append([
+                produto['codigo'],
+                (produto['nome'] or '')[:30],
+                str(produto['quantidade_atual']),
+                str(produto['quantidade_minima']),
+                produto['situacao'],
+            ])
+
+        detalhes_table = Table(tabela_data, colWidths=[1.0 * inch, 2.8 * inch, 0.8 * inch, 0.8 * inch, 1.2 * inch])
+        detalhes_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        story.append(detalhes_table)
+
+    doc.build(story)
+
+    return FileResponse(
+        temp_file.name,
+        media_type="application/pdf",
+        filename=f"relatorio_estoque_{datetime.now().strftime('%Y%m%d')}.pdf"
+    )
+
+def gerar_excel_movimentacao_estoque(dados):
+    """Gerar relatório de movimentação de estoque em Excel"""
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        resumo_df = pd.DataFrame([dados["resumo"]])
+        resumo_df.to_excel(writer, sheet_name='Resumo', index=False)
+
+        movimentos_df = pd.DataFrame(dados["movimentos"])
+        if not movimentos_df.empty:
+            movimentos_df["data"] = pd.to_datetime(movimentos_df["data"], utc=True, errors='coerce').dt.tz_localize(None)
+            movimentos_df = movimentos_df.rename(columns={
+                "data": "Data",
+                "produto_codigo": "Código",
+                "produto_nome": "Produto",
+                "tipo": "Tipo",
+                "quantidade": "Quantidade",
+                "preco_unitario": "Preço Unitário",
+                "valor_total": "Valor Total",
+                "motivo": "Motivo",
+                "documento": "Documento",
+                "observacoes": "Observações",
+                "fornecedor": "Fornecedor"
+            })
+        movimentos_df.to_excel(writer, sheet_name='Movimentações', index=False)
+
+        if not movimentos_df.empty:
+            worksheet = writer.sheets['Movimentações']
+            for cell in worksheet['A'][1:]:
+                cell.number_format = 'dd/mm/yyyy hh:mm:ss'
+
+            column_widths = {
+                'A': 22,
+                'B': 12,
+                'C': 32,
+                'D': 12,
+                'E': 12,
+                'F': 15,
+                'G': 15,
+                'H': 24,
+                'I': 14,
+                'J': 50,
+                'K': 24,
+            }
+            for column, width in column_widths.items():
+                worksheet.column_dimensions[column].width = width
+
+    output.seek(0)
+
+    return Response(
+        content=output.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename=relatorio_movimentacao_estoque_{dados['periodo']['data_inicio']}_{dados['periodo']['data_fim']}.xlsx"
+        }
+    )
+
+def gerar_pdf_movimentacao_estoque(dados):
+    """Gerar relatório de movimentação de estoque em PDF"""
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+
+    doc = SimpleDocTemplate(temp_file.name, pagesize=A4)
+    story = []
+    styles = getSampleStyleSheet()
+
+    story.append(Paragraph("Relatório de Movimentação de Estoque", styles['Title']))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(
+        f"Período: {formatar_data_br(dados['periodo']['data_inicio'])} a {formatar_data_br(dados['periodo']['data_fim'])}",
+        styles['Normal']
+    ))
+    story.append(Spacer(1, 12))
+
+    resumo = dados['resumo']
+    resumo_data = [
+        ['Total de Movimentos', str(resumo['total_movimentos'])],
+        ['Total de Entradas', str(resumo['total_entradas'])],
+        ['Total de Saídas', str(resumo['total_saidas'])],
+    ]
+    resumo_table = Table(resumo_data, colWidths=[2.2 * inch, 2.2 * inch])
+    resumo_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+    ]))
+    story.append(resumo_table)
+    story.append(Spacer(1, 18))
+
+    if dados['movimentos']:
+        story.append(Paragraph("Movimentações (primeiros 30 registros)", styles['Heading2']))
+        story.append(Spacer(1, 8))
+
+        tabela_data = [['Data', 'Produto', 'Tipo', 'Qtd', 'Motivo']]
+        for movimento in dados['movimentos'][:30]:
+            data_formatada = '-'
+            if movimento['data']:
+                try:
+                    data_formatada = datetime.fromisoformat(movimento['data'].replace('Z', '+00:00')).strftime('%d/%m/%Y %H:%M')
+                except ValueError:
+                    data_formatada = movimento['data'][:16]
+
+            tabela_data.append([
+                data_formatada,
+                (movimento['produto_nome'] or '')[:24],
+                (movimento['tipo'] or '').upper(),
+                str(movimento['quantidade']),
+                (movimento['motivo'] or '')[:28],
+            ])
+
+        detalhes_table = Table(tabela_data, colWidths=[1.4 * inch, 2.1 * inch, 0.9 * inch, 0.6 * inch, 2.4 * inch])
+        detalhes_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        story.append(detalhes_table)
+
+    doc.build(story)
+
+    return FileResponse(
+        temp_file.name,
+        media_type="application/pdf",
+        filename=f"relatorio_movimentacao_estoque_{dados['periodo']['data_inicio']}_{dados['periodo']['data_fim']}.pdf"
+    )

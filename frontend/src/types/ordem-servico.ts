@@ -165,6 +165,7 @@ export interface OrdemServicoList {
   veiculo_placa?: string;
   tipo_ordem: string;
   data_abertura: string;
+  data_conclusao?: string;
   status: string;
   valor_servico?: number;
   valor_pecas?: number;

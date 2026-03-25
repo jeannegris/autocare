@@ -60,6 +60,7 @@ export async function listarOrdens(params?: {
   veiculo_id?: number
   data_inicio?: string
   data_fim?: string
+  limit?: number
 }): Promise<OrdemServicoList[]> {
   const searchParams = new URLSearchParams()
   
@@ -68,6 +69,7 @@ export async function listarOrdens(params?: {
   if (params?.veiculo_id) searchParams.set('veiculo_id', params.veiculo_id.toString())
   if (params?.data_inicio) searchParams.set('data_inicio', params.data_inicio)
   if (params?.data_fim) searchParams.set('data_fim', params.data_fim)
+  if (params?.limit) searchParams.set('limit', params.limit.toString())
   
   const queryString = searchParams.toString()
   const url = queryString ? `/ordens?${queryString}` : '/ordens'

@@ -6,15 +6,86 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 from db import get_db
 from models.autocare_models import (
-    Cliente, Veiculo, OrdemServico, Produto, MovimentoEstoque, 
+    Cliente, Veiculo, OrdemServico, Produto,
     AlertaKm, ItemOrdem
+)
+from routes.autocare_ordens import (
+    calcular_valor_faturado_liquido,
+    obter_taxa_pagamento_aplicada,
+    normalizar_status_ordem,
 )
 
 router = APIRouter()
 
+
+def resolver_intervalo_datas(
+    data_inicio: Optional[str],
+    data_fim: Optional[str],
+    *,
+    padrao_mes_atual: bool = False,
+) -> tuple[date, date]:
+    if data_inicio and data_fim:
+        try:
+            inicio = datetime.strptime(data_inicio, '%Y-%m-%d').date()
+            fim_inclusivo = datetime.strptime(data_fim, '%Y-%m-%d').date()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Formato de data inválido. Use YYYY-MM-DD"
+            )
+
+        if inicio > fim_inclusivo:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A data inicial não pode ser maior que a data final"
+            )
+
+        return inicio, fim_inclusivo + timedelta(days=1)
+
+    if padrao_mes_atual:
+        inicio = date.today().replace(day=1)
+        if date.today().month == 12:
+            fim_exclusivo = date(date.today().year + 1, 1, 1)
+        else:
+            fim_exclusivo = date(date.today().year, date.today().month + 1, 1)
+        return inicio, fim_exclusivo
+
+    hoje = date.today()
+    return hoje, hoje + timedelta(days=1)
+
+
+def calcular_valor_cliente_ordem(ordem: OrdemServico) -> Decimal:
+    valor_servico = Decimal(str(ordem.valor_servico or 0))
+    valor_pecas = Decimal(str(ordem.valor_pecas or 0))
+    valor_desconto = Decimal(str(ordem.valor_desconto if ordem.valor_desconto is not None else (ordem.desconto or 0)))
+    return valor_servico + valor_pecas - valor_desconto
+
+
+def calcular_valor_faturado_dashboard(ordem: OrdemServico, db: Session) -> Decimal:
+    valor_total = Decimal(str(ordem.valor_total or 0))
+    valor_custo_pecas = Decimal(str(ordem.valor_custo_pecas or 0))
+    valor_mao_obra_avulso = Decimal(str(ordem.valor_mao_obra_avulso or 0))
+    taxa_pagamento_aplicada = obter_taxa_pagamento_aplicada(ordem, db)
+
+    return calcular_valor_faturado_liquido(
+        valor_total=valor_total,
+        valor_custo_pecas=valor_custo_pecas,
+        valor_mao_obra_avulso=valor_mao_obra_avulso,
+        taxa_pagamento_aplicada=taxa_pagamento_aplicada,
+    )
+
 @router.get("/resumo")
-def dashboard_resumo(db: Session = Depends(get_db)):
-    """Resumo geral do sistema para dashboard"""
+def dashboard_resumo(
+    data_inicio: Optional[str] = None,
+    data_fim: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Resumo geral do sistema para dashboard
+    
+    Args:
+        data_inicio: Data inicial no formato YYYY-MM-DD (opcional, padrão: primeiro dia do mês atual)
+        data_fim: Data final no formato YYYY-MM-DD (opcional, padrão: primeiro dia do próximo mês)
+    """
     
     # Contadores gerais
     total_clientes = db.query(Cliente).filter(Cliente.ativo == True).count()
@@ -34,21 +105,32 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         )
     ).count()
     
-    # Início e fim do mês atual
-    inicio_mes = date.today().replace(day=1)
-    if date.today().month == 12:
-        fim_mes = date(date.today().year + 1, 1, 1)
-    else:
-        fim_mes = date.today().replace(month=date.today().month + 1, day=1)
+    # Definir intervalo de datas
+    inicio_mes, fim_mes = resolver_intervalo_datas(
+        data_inicio,
+        data_fim,
+        padrao_mes_atual=True,
+    )
     
     # Ordens concluídas no mês
-    ordens_concluidas_mes = db.query(OrdemServico).filter(
+    ordens_concluidas_mes_query = db.query(OrdemServico).filter(
         and_(
             or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
             OrdemServico.data_conclusao >= inicio_mes,
             OrdemServico.data_conclusao < fim_mes
         )
-    ).count()
+    )
+    ordens_concluidas_mes = ordens_concluidas_mes_query.all()
+    total_ordens_concluidas_mes = len(ordens_concluidas_mes)
+
+    # Base financeira filtrada pelo intervalo selecionado.
+    ordens_concluidas_filtradas = db.query(OrdemServico).filter(
+        and_(
+            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
+            OrdemServico.data_conclusao >= inicio_mes,
+            OrdemServico.data_conclusao < fim_mes,
+        )
+    ).all()
     
     # Produtos com estoque baixo
     produtos_estoque_baixo = db.query(Produto).filter(
@@ -58,32 +140,24 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         )
     ).count()
     
-    # Faturamento do mês (soma de valor_total das OS concluídas)
-    # valor_total é o valor cobrado ao cliente (receita bruta)
-    faturamento_mes = db.query(
-        func.sum(
-            func.coalesce(OrdemServico.valor_total, 0)
-        )
-    ).filter(
-        and_(
-            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-            OrdemServico.data_conclusao >= inicio_mes,
-            OrdemServico.data_conclusao < fim_mes
-        )
-    ).scalar() or Decimal('0.00')
-    
-    # Faturamento hoje (soma de valor_total das OS concluídas hoje)
+    # Receita bruta: mesma regra usada no card da tela de OS padrão.
+    faturamento_mes = sum(
+        (calcular_valor_cliente_ordem(ordem) for ordem in ordens_concluidas_filtradas),
+        Decimal('0.00')
+    )
+
+    # Receita bruta de hoje: mesma regra da tela de OS (Valor Cliente)
     hoje = date.today()
-    faturamento_hoje = db.query(
-        func.sum(
-            func.coalesce(OrdemServico.valor_total, 0)
-        )
-    ).filter(
+    ordens_concluidas_hoje = db.query(OrdemServico).filter(
         and_(
             or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
             func.date(OrdemServico.data_conclusao) == hoje
         )
-    ).scalar() or Decimal('0.00')
+    ).all()
+    faturamento_hoje = sum(
+        (calcular_valor_cliente_ordem(ordem) for ordem in ordens_concluidas_hoje),
+        Decimal('0.00')
+    )
     
     # Quantidade de serviços realizados no mês (conta OS do tipo SERVICO ou VENDA_SERVICO)
     # Cada OS conta +1, independente de quantos serviços foram realizados
@@ -111,37 +185,24 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         )
     ).scalar() or 0
     
-    # Custo mensal = Custo das peças (via MovimentoEstoque) + Mão de obra avulsa (via OrdemServico)
-    # Custo das peças: soma do preco_custo * quantidade de todas as saídas de estoque no mês
-    custo_pecas = db.query(
-        func.sum(
-            func.coalesce(MovimentoEstoque.preco_custo, 0) * func.coalesce(MovimentoEstoque.quantidade, 0)
-        )
-    ).filter(
-        and_(
-            MovimentoEstoque.tipo == "SAIDA",
-            MovimentoEstoque.ordem_servico_id.isnot(None),
-            func.date(MovimentoEstoque.data_movimentacao) >= inicio_mes,
-            func.date(MovimentoEstoque.data_movimentacao) < fim_mes
-        )
-    ).scalar() or Decimal('0.00')
-    
-    # Mão de obra avulsa: soma de valor_mao_obra_avulso de todas as OS concluídas no mês
-    mao_obra_avulsa = db.query(
-        func.sum(func.coalesce(OrdemServico.valor_mao_obra_avulso, 0))
-    ).filter(
-        and_(
-            or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-            OrdemServico.data_conclusao >= inicio_mes,
-            OrdemServico.data_conclusao < fim_mes
-        )
-    ).scalar() or Decimal('0.00')
+    # Custo: usa a mesma base carregada pela tela de OS padrão.
+    custo_pecas = sum(
+        (Decimal(str(ordem.valor_custo_pecas or 0)) for ordem in ordens_concluidas_filtradas),
+        Decimal('0.00')
+    )
+    mao_obra_avulsa = sum(
+        (Decimal(str(ordem.valor_mao_obra_avulso or 0)) for ordem in ordens_concluidas_filtradas),
+        Decimal('0.00')
+    )
     
     # Custo mensal total
     custo_mensal = custo_pecas + mao_obra_avulsa
     
-    # Receita líquida (faturamento - custo)
-    receita_liquida = faturamento_mes - custo_mensal
+    # Receita líquida: mesma regra da coluna Valor Faturado da tela de OS.
+    receita_liquida = sum(
+        (calcular_valor_faturado_dashboard(ordem, db) for ordem in ordens_concluidas_filtradas),
+        Decimal('0.00')
+    )
     
     return {
         "contadores": {
@@ -153,7 +214,7 @@ def dashboard_resumo(db: Session = Depends(get_db)):
         "ordens_servico": {
             "abertas": ordens_abertas,
             "em_andamento": ordens_andamento,
-            "concluidas_mes": ordens_concluidas_mes
+            "concluidas_mes": total_ordens_concluidas_mes
         },
         "financeiro": {
             "faturamento_mes": float(faturamento_mes),
@@ -168,32 +229,46 @@ def dashboard_resumo(db: Session = Depends(get_db)):
     }
 
 @router.get("/vendas-mensais")
-def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
-    """Vendas mensais por ano para gráfico - separadas por tipo"""
-    if not ano:
-        ano = datetime.now().year
+def vendas_mensais(
+    ano: Optional[int] = None,
+    data_inicio: Optional[str] = None,
+    data_fim: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Vendas mensais por ano para gráfico - separadas por tipo
     
-    # Calcular os últimos 12 meses
-    hoje = date.today()
-    mes_atual = hoje.month
-    ano_atual = hoje.year
+    Args:
+        ano: Ano para cálculo (ignorado se data_inicio e data_fim forem fornecidas)
+        data_inicio: Data inicial no formato YYYY-MM-DD (opcional)
+        data_fim: Data final no formato YYYY-MM-DD (opcional)
+    """
     
-    # Arrays para armazenar dados dos últimos 12 meses
+    # Determinar intervalo de datas
+    if data_inicio and data_fim:
+        inicio_intervalo, fim_intervalo = resolver_intervalo_datas(data_inicio, data_fim)
+    else:
+        if not ano:
+            ano = datetime.now().year
+        hoje = date.today()
+        inicio_intervalo = date(hoje.year, hoje.month, 1) - timedelta(days=365)
+        inicio_intervalo = inicio_intervalo.replace(day=1)
+        if hoje.month == 12:
+            fim_intervalo = date(hoje.year + 1, 1, 1)
+        else:
+            fim_intervalo = date(hoje.year, hoje.month + 1, 1)
+    
+    # Arrays para armazenar dados dos meses no intervalo
     vendas_totais = []
     vendas_servicos = []
     vendas_pecas = []
     descontos_mensais = []
     labels_meses = []
     
-    # Iterar pelos últimos 12 meses
-    for i in range(11, -1, -1):
-        # Calcular mês e ano
-        mes = mes_atual - i
-        ano_calculo = ano_atual
-        
-        if mes <= 0:
-            mes += 12
-            ano_calculo -= 1
+    # Gerar lista de meses entre inicio_intervalo e fim_intervalo
+    data_atual = inicio_intervalo.replace(day=1)
+    while data_atual < fim_intervalo:
+        mes = data_atual.month
+        ano_calculo = data_atual.year
         
         # Definir início e fim do mês
         inicio_mes = date(ano_calculo, mes, 1)
@@ -201,13 +276,23 @@ def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
             fim_mes = date(ano_calculo + 1, 1, 1)
         else:
             fim_mes = date(ano_calculo, mes + 1, 1)
+
+        inicio_consulta = max(inicio_mes, inicio_intervalo)
+        fim_consulta = min(fim_mes, fim_intervalo)
+
+        if inicio_consulta >= fim_consulta:
+            if mes == 12:
+                data_atual = date(ano_calculo + 1, 1, 1)
+            else:
+                data_atual = date(ano_calculo, mes + 1, 1)
+            continue
         
         # Total de vendas do mês
         total_mes = db.query(func.sum(OrdemServico.valor_total)).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_mes,
-                OrdemServico.data_conclusao < fim_mes
+                OrdemServico.data_conclusao >= inicio_consulta,
+                OrdemServico.data_conclusao < fim_consulta
             )
         ).scalar() or Decimal('0.00')
         
@@ -232,8 +317,8 @@ def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
         servicos_mes = db.query(func.sum(serv_net_expr)).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_mes,
-                OrdemServico.data_conclusao < fim_mes,
+                OrdemServico.data_conclusao >= inicio_consulta,
+                OrdemServico.data_conclusao < fim_consulta,
                 or_(
                     OrdemServico.tipo_ordem == "SERVICO",
                     OrdemServico.tipo_ordem == "VENDA_SERVICO"
@@ -244,8 +329,8 @@ def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
         pecas_mes = db.query(func.sum(pec_net_expr)).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_mes,
-                OrdemServico.data_conclusao < fim_mes,
+                OrdemServico.data_conclusao >= inicio_consulta,
+                OrdemServico.data_conclusao < fim_consulta,
                 or_(
                     OrdemServico.tipo_ordem == "VENDA",
                     OrdemServico.tipo_ordem == "VENDA_SERVICO"
@@ -261,8 +346,8 @@ def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
         ).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_mes,
-                OrdemServico.data_conclusao < fim_mes
+                OrdemServico.data_conclusao >= inicio_consulta,
+                OrdemServico.data_conclusao < fim_consulta
             )
         ).scalar() or Decimal('0.00')
 
@@ -275,6 +360,12 @@ def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
         # Nome do mês
         nomes_meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
         labels_meses.append(nomes_meses[mes - 1])
+        
+        # Avançar para o próximo mês
+        if mes == 12:
+            data_atual = date(ano_calculo + 1, 1, 1)
+        else:
+            data_atual = date(ano_calculo, mes + 1, 1)
     
     return {
         "meses": labels_meses,
@@ -285,12 +376,29 @@ def vendas_mensais(ano: Optional[int] = None, db: Session = Depends(get_db)):
     }
 
 @router.get("/ordens-status")
-def ordens_por_status(db: Session = Depends(get_db)):
-    """Distribuição de ordens por status para gráfico pizza"""
+def ordens_por_status(
+    data_inicio: Optional[str] = None,
+    data_fim: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Distribuição de ordens por status para gráfico pizza
+    
+    Args:
+        data_inicio: Data inicial no formato YYYY-MM-DD (opcional)
+        data_fim: Data final no formato YYYY-MM-DD (opcional)
+    """
+    
+    # Construir filtro de datas se fornecidas
+    filters = []
+    if data_inicio and data_fim:
+        inicio_mes, fim_mes = resolver_intervalo_datas(data_inicio, data_fim)
+        filters.append(OrdemServico.data_conclusao >= inicio_mes)
+        filters.append(OrdemServico.data_conclusao < fim_mes)
+    
     status_count = db.query(
         OrdemServico.status,
         func.count(OrdemServico.id).label('quantidade')
-    ).group_by(OrdemServico.status).all()
+    ).filter(and_(*filters) if filters else True).group_by(OrdemServico.status).all()
     
     # Mapeamento de cores baseado no padrão do sistema
     cores_status = {
@@ -381,21 +489,41 @@ def produtos_mais_vendidos(
     ]
 
 @router.get("/alertas")
-def dashboard_alertas(db: Session = Depends(get_db)):
-    """Alertas para o dashboard"""
+def dashboard_alertas(
+    data_inicio: Optional[str] = None,
+    data_fim: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Alertas para o dashboard
+    
+    Args:
+        data_inicio: Data inicial no formato YYYY-MM-DD (opcional, padrão: hoje)
+        data_fim: Data final no formato YYYY-MM-DD (opcional, padrão: hoje + 7 dias)
+    """
     alertas = []
     
-    # Alertas de aniversário (próximos 7 dias)
-    data_inicio = date.today()
-    data_fim = data_inicio + timedelta(days=7)
+    # Determinar intervalo de datas
+    if data_inicio and data_fim:
+        try:
+            alerta_inicio = datetime.strptime(data_inicio, '%Y-%m-%d').date()
+            alerta_fim = datetime.strptime(data_fim, '%Y-%m-%d').date()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Formato de data inválido. Use YYYY-MM-DD"
+            )
+    else:
+        alerta_inicio = date.today()
+        alerta_fim = alerta_inicio + timedelta(days=7)
     
+    # Alertas de aniversário no intervalo
     clientes_aniversario = db.query(Cliente).filter(
         and_(
             Cliente.ativo == True,
             Cliente.data_nascimento.isnot(None),
-            func.extract('month', Cliente.data_nascimento) == data_inicio.month,
+            func.extract('month', Cliente.data_nascimento) == alerta_inicio.month,
             func.extract('day', Cliente.data_nascimento).between(
-                data_inicio.day, data_fim.day
+                alerta_inicio.day, alerta_fim.day
             )
         )
     ).all()

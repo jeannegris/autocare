@@ -186,6 +186,7 @@ class OrdemServicoNovaList(BaseModel):
     veiculo_placa: Optional[str] = None
     tipo_ordem: str
     data_abertura: datetime
+    data_conclusao: Optional[datetime] = None
     status: str
     valor_servico: Optional[Decimal] = None
     valor_pecas: Optional[Decimal] = None
