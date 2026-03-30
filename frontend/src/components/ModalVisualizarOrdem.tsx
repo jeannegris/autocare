@@ -143,6 +143,21 @@ export default function ModalVisualizarOrdem({
     window.print();
   };
 
+  const totalCliente = (() => {
+    const valorServico = parseFloat(String(ordem.valor_servico || 0));
+    const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
+    const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
+    return valorServico + valorPecas - valorDesconto;
+  })();
+
+  const formaPagamentoTexto = (() => {
+    if (ordem.forma_pagamento === 'DINHEIRO') return 'Dinheiro';
+    if (ordem.forma_pagamento === 'PIX') return 'PIX';
+    if (ordem.forma_pagamento === 'DEBITO') return 'Débito';
+    if (ordem.forma_pagamento === 'CREDITO') return 'Crédito';
+    return 'Não informado';
+  })();
+
   return (
     <>
       <ModalCancelamento
@@ -163,6 +178,10 @@ export default function ModalVisualizarOrdem({
       {/* Layout de Impressão - Visível apenas ao imprimir */}
       <div className="print-only">
         <style dangerouslySetInnerHTML={{ __html: `
+          @page {
+            size: A4 portrait;
+            margin: 8mm;
+          }
           @media print {
             body * {
               visibility: hidden;
@@ -175,10 +194,71 @@ export default function ModalVisualizarOrdem({
               left: 0;
               top: 0;
               width: 100%;
-              padding: 20px;
+              padding: 0;
             }
             .no-print {
               display: none !important;
+            }
+            .print-container {
+              max-width: 100%;
+              margin: 0 auto;
+              font-family: Arial, sans-serif;
+              color: #111827;
+              font-size: 10px;
+              line-height: 1.2;
+            }
+            .print-table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+              margin-bottom: 6px;
+            }
+            .print-table th,
+            .print-table td {
+              border: 1px solid #9ca3af;
+              padding: 3px 5px;
+              vertical-align: top;
+              word-wrap: break-word;
+            }
+            .print-table th {
+              background: #f3f4f6;
+              font-weight: 700;
+              text-transform: uppercase;
+              font-size: 9px;
+              letter-spacing: 0.2px;
+            }
+            .print-title {
+              text-align: center;
+              margin: 2px 0 6px 0;
+            }
+            .print-title h1 {
+              margin: 0;
+              font-size: 16px;
+              font-weight: 700;
+              letter-spacing: 0.4px;
+            }
+            .print-title p {
+              margin: 1px 0 0 0;
+              font-size: 12px;
+              font-weight: 700;
+            }
+            .print-header {
+              text-align: center;
+              font-size: 11px;
+              font-weight: 700;
+              margin-bottom: 4px;
+            }
+            .signature-area {
+              margin-top: 10px;
+              text-align: center;
+            }
+            .signature-line {
+              width: 260px;
+              border-top: 1px solid #111827;
+              margin: 16px auto 4px auto;
+            }
+            .avoid-break {
+              page-break-inside: avoid;
             }
           }
           @media screen {
@@ -188,199 +268,137 @@ export default function ModalVisualizarOrdem({
           }
         `}} />
 
-        <div style={{ fontFamily: 'Arial, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
-          {/* Cabeçalho */}
-          <div style={{ textAlign: 'center', marginBottom: '30px', paddingBottom: '20px', borderBottom: '2px solid #000' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-              ORDEM DE SERVIÇO
-            </h1>
-            <p style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
-              Nº {ordem.numero}
-            </p>
+        <div className="print-container">
+          <div className="print-header">AutoCare - Sistema de Gestão em AutoCenter</div>
+
+          <div className="print-title">
+            <h1>ORDEM DE SERVIÇO</h1>
+            <p>Nº {ordem.numero}</p>
           </div>
 
-          {/* Duas Colunas: Cliente/Veículo e Informações da Ordem */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-            {/* Coluna Esquerda - Cliente e Veículo */}
-            <div>
-              {/* Cliente */}
-              <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '5px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>
-                  Cliente
-                </h3>
-                <p style={{ fontSize: '13px', margin: '5px 0', fontWeight: 'bold' }}>
-                  {ordem.cliente_nome}
-                </p>
-              </div>
+          <table className="print-table avoid-break">
+            <tbody>
+              <tr>
+                <th style={{ width: '18%' }}>Cliente</th>
+                <td style={{ width: '32%' }}>{ordem.cliente_nome || 'Não informado'}</td>
+                <th style={{ width: '18%' }}>Telefone</th>
+                <td style={{ width: '32%' }}>{ordem.cliente_telefone || 'Não informado'}</td>
+              </tr>
+              <tr>
+                <th>E-mail</th>
+                <td>{ordem.cliente_email || 'Não informado'}</td>
+                <th>Placa</th>
+                <td>{ordem.veiculo_placa || 'Não informado'}</td>
+              </tr>
+              <tr>
+                <th>Veículo</th>
+                <td>{`${ordem.veiculo_marca || ''} ${ordem.veiculo_modelo || ''}`.trim() || 'Não informado'}</td>
+                <th>Ano / KM</th>
+                <td>
+                  {ordem.veiculo_ano || 'N/A'}
+                  {' / '}
+                  {ordem.km_veiculo ? `${ordem.km_veiculo.toLocaleString()} km` : 'N/A'}
+                </td>
+              </tr>
+              <tr>
+                <th>Tipo / Status</th>
+                <td>
+                  {(TIPOS_ORDEM[ordem.tipo_ordem as keyof typeof TIPOS_ORDEM] || ordem.tipo_ordem) || 'N/A'}
+                  {' / '}
+                  {getStatusInfo(ordem.status || 'PENDENTE').label}
+                </td>
+                <th>Abertura / Ordem</th>
+                <td>
+                  {ordem.data_abertura ? formatarData(ordem.data_abertura) : 'N/A'}
+                  {' / '}
+                  {ordem.data_ordem ? formatarData(ordem.data_ordem) : 'N/A'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
-              {/* Veículo */}
-              <div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '5px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>
-                  Veículo
-                </h3>
-                <div style={{ fontSize: '12px' }}>
-                  <p style={{ margin: '5px 0' }}>
-                    <strong>Marca/Modelo:</strong> {ordem.veiculo_marca} {ordem.veiculo_modelo}
-                  </p>
-                  <p style={{ margin: '5px 0' }}>
-                    <strong>Placa:</strong> {ordem.veiculo_placa}
-                  </p>
-                  {ordem.veiculo_ano && (
-                    <p style={{ margin: '5px 0' }}>
-                      <strong>Ano:</strong> {ordem.veiculo_ano}
-                    </p>
-                  )}
-                  {ordem.km_veiculo && (
-                    <p style={{ margin: '5px 0' }}>
-                      <strong>KM:</strong> {ordem.km_veiculo.toLocaleString()} km
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+          <table className="print-table avoid-break">
+            <thead>
+              <tr>
+                <th>Descrição do Serviço</th>
+                {ordem.observacoes && <th style={{ width: '40%' }}>Observações</th>}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{ordem.descricao_servico || 'Não informado'}</td>
+                {ordem.observacoes && <td>{ordem.observacoes}</td>}
+              </tr>
+            </tbody>
+          </table>
 
-            {/* Coluna Direita - Informações da Ordem */}
-            <div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '5px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>
-                Informações da Ordem
-              </h3>
-              <div style={{ fontSize: '12px' }}>
-                <p style={{ margin: '8px 0' }}>
-                  <strong>Status:</strong> {getStatusInfo(ordem.status || 'PENDENTE').label}
-                </p>
-                <p style={{ margin: '8px 0' }}>
-                  <strong>Tipo:</strong> {TIPOS_ORDEM[ordem.tipo_ordem as keyof typeof TIPOS_ORDEM] || ordem.tipo_ordem}
-                </p>
-                <p style={{ margin: '8px 0' }}>
-                  <strong>Data de Abertura:</strong> {ordem.data_abertura ? formatarData(ordem.data_abertura) : 'N/A'}
-                </p>
-                {ordem.data_ordem && (
-                  <p style={{ margin: '8px 0' }}>
-                    <strong>Data da Ordem:</strong> {formatarData(ordem.data_ordem)}
-                  </p>
-                )}
-                {ordem.observacoes && (
-                  <div style={{ marginTop: '12px' }}>
-                    <strong>Observações:</strong>
-                    <p style={{ margin: '5px 0', fontSize: '11px' }}>{ordem.observacoes}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Descrição do Serviço */}
-          {ordem.descricao_servico && (
-            <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '5px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>
-                Descrição do Serviço
-              </h3>
-              <p style={{ fontSize: '12px', margin: '5px 0', lineHeight: '1.6' }}>
-                {ordem.descricao_servico}
-              </p>
-              <p style={{ fontSize: '13px', margin: '10px 0 0 0', fontWeight: 'bold' }}>
-                Valor: R$ {parseFloat(String(ordem.valor_servico || 0)).toFixed(2).replace('.', ',')}
-              </p>
-            </div>
-          )}
-
-          {/* Itens da Ordem */}
           {ordem.itens && ordem.itens.length > 0 && (
-            <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '5px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>
-                Itens da Ordem
-              </h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f3f4f6' }}>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Tipo</th>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Descrição</th>
-                    <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>Qtd</th>
-                    <th style={{ padding: '8px', textAlign: 'right', border: '1px solid #ddd' }}>Valor Unit.</th>
-                    <th style={{ padding: '8px', textAlign: 'right', border: '1px solid #ddd' }}>Valor Total</th>
+            <table className="print-table avoid-break">
+              <thead>
+                <tr>
+                  <th style={{ width: '12%' }}>Tipo</th>
+                  <th style={{ width: '46%' }}>Item</th>
+                  <th style={{ width: '10%', textAlign: 'center' }}>Qtd</th>
+                  <th style={{ width: '16%', textAlign: 'right' }}>Vl. Unit.</th>
+                  <th style={{ width: '16%', textAlign: 'right' }}>Vl. Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ordem.itens.map((item, index) => (
+                  <tr key={index}>
+                    <td>{item.tipo === 'PRODUTO' ? 'Produto' : 'Serviço'}</td>
+                    <td>
+                      {item.descricao}
+                      {item.observacoes ? ` (${item.observacoes})` : ''}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>{item.quantidade}</td>
+                    <td style={{ textAlign: 'right' }}>R$ {parseFloat(String(item.valor_unitario)).toFixed(2).replace('.', ',')}</td>
+                    <td style={{ textAlign: 'right' }}>R$ {parseFloat(String(item.valor_total)).toFixed(2).replace('.', ',')}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {ordem.itens.map((item, index) => (
-                    <tr key={index}>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>
-                        {item.tipo === 'PRODUTO' ? 'Produto' : 'Serviço'}
-                      </td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>
-                        {item.descricao}
-                        {item.observacoes && (
-                          <div style={{ fontSize: '10px', color: '#666', marginTop: '3px' }}>
-                            {item.observacoes}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>
-                        {item.quantidade}
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'right', border: '1px solid #ddd' }}>
-                        R$ {parseFloat(String(item.valor_unitario)).toFixed(2).replace('.', ',')}
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 'bold' }}>
-                        R$ {parseFloat(String(item.valor_total)).toFixed(2).replace('.', ',')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           )}
 
-          {/* Resumo Financeiro */}
-          <div style={{ marginBottom: '30px', padding: '15px', border: '2px solid #000', borderRadius: '5px', backgroundColor: '#f9fafb' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase' }}>
-              Resumo Financeiro
-            </h3>
-            <div style={{ fontSize: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                <span>Serviços:</span>
-                <span style={{ fontWeight: 'bold' }}>R$ {parseFloat(String(ordem.valor_servico || 0)).toFixed(2).replace('.', ',')}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                <span>Peças/Produtos:</span>
-                <span style={{ fontWeight: 'bold' }}>R$ {parseFloat(String(ordem.valor_pecas || 0)).toFixed(2).replace('.', ',')}</span>
-              </div>
+          <table className="print-table avoid-break" style={{ width: '62%', marginLeft: 'auto' }}>
+            <thead>
+              <tr>
+                <th colSpan={2}>Resumo Financeiro</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Serviços</td>
+                <td style={{ textAlign: 'right' }}>R$ {parseFloat(String(ordem.valor_servico || 0)).toFixed(2).replace('.', ',')}</td>
+              </tr>
+              <tr>
+                <td>Peças/Produtos</td>
+                <td style={{ textAlign: 'right' }}>R$ {parseFloat(String(ordem.valor_pecas || 0)).toFixed(2).replace('.', ',')}</td>
+              </tr>
               {(ordem.valor_desconto || 0) > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', color: '#dc2626' }}>
-                  <span>Desconto:</span>
-                  <span style={{ fontWeight: 'bold' }}>-R$ {parseFloat(String(ordem.valor_desconto)).toFixed(2).replace('.', ',')}</span>
-                </div>
+                <tr>
+                  <td>Desconto</td>
+                  <td style={{ textAlign: 'right' }}>-R$ {parseFloat(String(ordem.valor_desconto || 0)).toFixed(2).replace('.', ',')}</td>
+                </tr>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '2px solid #000', marginTop: '10px' }}>
-                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>TOTAL:</span>
-                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>R$ {(() => {
-                  const valorServico = parseFloat(String(ordem.valor_servico || 0));
-                  const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
-                  const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
-                  const totalCliente = valorServico + valorPecas - valorDesconto;
-                  return totalCliente.toFixed(2).replace('.', ',');
-                })()}</span>
-              </div>
-            </div>
-          </div>
+              <tr>
+                <td>Forma de Pagamento</td>
+                <td style={{ textAlign: 'right' }}>{formaPagamentoTexto}</td>
+              </tr>
+              <tr>
+                <td style={{ fontWeight: 700 }}>Total</td>
+                <td style={{ textAlign: 'right', fontWeight: 700 }}>R$ {totalCliente.toFixed(2).replace('.', ',')}</td>
+              </tr>
+            </tbody>
+          </table>
 
-          {/* Assinatura */}
-          <div style={{ marginTop: '40px', paddingTop: '60px', borderTop: '1px solid #000' }}>
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: '12px', margin: '5px 0' }}>
-                _____________________________________________
-              </p>
-              <p style={{ fontSize: '11px', fontWeight: 'bold', marginTop: '5px' }}>
-                Assinatura do Cliente
-              </p>
-              <p style={{ fontSize: '10px', color: '#666', marginTop: '5px' }}>
-                {ordem.cliente_nome}
-              </p>
+          <div className="signature-area avoid-break" style={{ marginTop: '32px' }}>
+            <div className="signature-line" style={{ marginTop: '40px' }} />
+            <div style={{ fontWeight: 700 }}>Assinatura do Cliente</div>
+            <div style={{ marginTop: '2px' }}>{ordem.cliente_nome || ''}</div>
+            <div style={{ marginTop: '6px', color: '#4b5563' }}>
+              Documento gerado em {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
             </div>
-          </div>
-
-          {/* Rodapé */}
-          <div style={{ marginTop: '30px', textAlign: 'center', fontSize: '10px', color: '#666', paddingTop: '20px', borderTop: '1px solid #ddd' }}>
-            <p>Documento gerado em {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: ptBR })}</p>
           </div>
         </div>
       </div>
@@ -596,13 +614,7 @@ export default function ModalVisualizarOrdem({
                 <div className="border-t pt-2">
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
-                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>R$ {(() => {
-                  const valorServico = parseFloat(String(ordem.valor_servico || 0));
-                  const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
-                  const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
-                  const totalCliente = valorServico + valorPecas - valorDesconto;
-                  return totalCliente.toFixed(2).replace('.', ',');
-                })()}</span>
+                    <span style={{ fontSize: '18px', fontWeight: 'bold' }}>R$ {totalCliente.toFixed(2).replace('.', ',')}</span>
                   </div>
                 </div>
               </div>

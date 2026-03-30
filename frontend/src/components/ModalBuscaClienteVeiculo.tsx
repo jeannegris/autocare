@@ -105,8 +105,21 @@ export default function ModalBuscaClienteVeiculo({
     setModalNovoProprietario(true);
   };
 
-  const handleNovoProprietarioEncontrado = (cliente: ClienteBuscaResponse['cliente']) => {
-    onClienteEncontrado(cliente);
+  const handleNovoProprietarioEncontrado = async (cliente: ClienteBuscaResponse['cliente']) => {
+    // Se existe um veículo real (id > 0) encontrado pela placa, chamar a API de transferência
+    const veiculoId = resultadoVeiculo?.veiculo?.id;
+    if (veiculoId && veiculoId > 0 && cliente) {
+      try {
+        await apiFetch(`/veiculos/${veiculoId}/transferir-proprietario`, {
+          method: 'PATCH',
+          body: JSON.stringify({ novo_cliente_id: cliente.id }),
+        });
+      } catch (err) {
+        console.error('Erro ao transferir propriet\u00e1rio do ve\u00edculo:', err);
+        // Mesmo em caso de falha na API, prosseguir para não travar o fluxo de OS
+      }
+    }
+    onClienteEncontrado(cliente, resultadoVeiculo?.veiculo);
     onClose();
   };
 

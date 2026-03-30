@@ -190,7 +190,6 @@ app.include_router(autocare_dashboard.router, prefix="/api/dashboard", tags=["Da
 app.include_router(autocare_configuracoes.router, prefix="/api/configuracoes", tags=["Configurações"])
 app.include_router(autocare_sugestoes_manutencao.router, prefix="/api/sugestoes-manutencao", tags=["Sugestões de Manutenção"])
 app.include_router(autocare_compras_fornecedor.router, prefix="/api/compras-fornecedor", tags=["Compras de Fornecedor"])
-
 # Compatibilidade com frontend servido em /autocare: expor mesmos endpoints em /autocare-api
 app.include_router(autocare_auth.router, prefix="/autocare-api/auth", tags=["Autenticação"])
 app.include_router(autocare_usuarios.router, prefix="/autocare-api/usuarios", tags=["Usuários"])

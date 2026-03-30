@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_, or_, cast, DateTime as SADateTime
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional
@@ -16,6 +16,15 @@ from routes.autocare_ordens import (
 )
 
 router = APIRouter()
+
+TIPOS_DATA_OS_VALIDOS = {
+    "abertura": "abertura",
+    "data_abertura": "abertura",
+    "conclusao": "conclusao",
+    "conclusão": "conclusao",
+    "data_conclusao": "conclusao",
+    "data_conclusão": "conclusao",
+}
 
 
 def resolver_intervalo_datas(
@@ -37,7 +46,7 @@ def resolver_intervalo_datas(
         if inicio > fim_inclusivo:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A data inicial não pode ser maior que a data final"
+                detail="Data Inicio não pode ser maior que a Data Fim, favor ajustar!"
             )
 
         return inicio, fim_inclusivo + timedelta(days=1)
@@ -52,6 +61,30 @@ def resolver_intervalo_datas(
 
     hoje = date.today()
     return hoje, hoje + timedelta(days=1)
+
+
+def resolver_tipo_data_os(tipo_data: Optional[str]) -> str:
+    if not tipo_data:
+        return "conclusao"
+
+    tipo_normalizado = TIPOS_DATA_OS_VALIDOS.get(tipo_data.strip().lower())
+    if not tipo_normalizado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tipo de data inválido. Use 'abertura' ou 'conclusao'"
+        )
+
+    return tipo_normalizado
+
+
+def obter_coluna_data_ordem(tipo_data: Optional[str]):
+    tipo_normalizado = resolver_tipo_data_os(tipo_data)
+    coluna_data = (
+        func.coalesce(OrdemServico.data_ordem, cast(OrdemServico.data_abertura, SADateTime))
+        if tipo_normalizado == "abertura"
+        else OrdemServico.data_conclusao
+    )
+    return tipo_normalizado, coluna_data
 
 
 def calcular_valor_cliente_ordem(ordem: OrdemServico) -> Decimal:
@@ -78,6 +111,7 @@ def calcular_valor_faturado_dashboard(ordem: OrdemServico, db: Session) -> Decim
 def dashboard_resumo(
     data_inicio: Optional[str] = None,
     data_fim: Optional[str] = None,
+    tipo_data: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Resumo geral do sistema para dashboard
@@ -85,13 +119,14 @@ def dashboard_resumo(
     Args:
         data_inicio: Data inicial no formato YYYY-MM-DD (opcional, padrão: primeiro dia do mês atual)
         data_fim: Data final no formato YYYY-MM-DD (opcional, padrão: primeiro dia do próximo mês)
+        tipo_data: Base do filtro das OS. Aceita abertura ou conclusao (opcional, padrão: conclusao)
     """
+    _, coluna_data_ordem = obter_coluna_data_ordem(tipo_data)
     
     # Contadores gerais
     total_clientes = db.query(Cliente).filter(Cliente.ativo == True).count()
     total_veiculos = db.query(Veiculo).filter(Veiculo.ativo == True).count()
     total_produtos = db.query(Produto).filter(Produto.ativo == True).count()
-    
     # Ordens de serviço - ajustado para status correto em maiúsculas
     ordens_abertas = db.query(OrdemServico).filter(
         or_(OrdemServico.status == "PENDENTE", OrdemServico.status == "Aberta")
@@ -116,8 +151,8 @@ def dashboard_resumo(
     ordens_concluidas_mes_query = db.query(OrdemServico).filter(
         and_(
             or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-            OrdemServico.data_conclusao >= inicio_mes,
-            OrdemServico.data_conclusao < fim_mes
+            coluna_data_ordem >= inicio_mes,
+            coluna_data_ordem < fim_mes
         )
     )
     ordens_concluidas_mes = ordens_concluidas_mes_query.all()
@@ -127,8 +162,8 @@ def dashboard_resumo(
     ordens_concluidas_filtradas = db.query(OrdemServico).filter(
         and_(
             or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-            OrdemServico.data_conclusao >= inicio_mes,
-            OrdemServico.data_conclusao < fim_mes,
+            coluna_data_ordem >= inicio_mes,
+            coluna_data_ordem < fim_mes,
         )
     ).all()
     
@@ -151,7 +186,7 @@ def dashboard_resumo(
     ordens_concluidas_hoje = db.query(OrdemServico).filter(
         and_(
             or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-            func.date(OrdemServico.data_conclusao) == hoje
+            func.date(coluna_data_ordem) == hoje
         )
     ).all()
     faturamento_hoje = sum(
@@ -164,8 +199,8 @@ def dashboard_resumo(
     servicos_realizados = db.query(func.count(OrdemServico.id)).filter(
         and_(
             or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-            OrdemServico.data_conclusao >= inicio_mes,
-            OrdemServico.data_conclusao < fim_mes,
+            coluna_data_ordem >= inicio_mes,
+            coluna_data_ordem < fim_mes,
             or_(
                 OrdemServico.tipo_ordem == "SERVICO",
                 OrdemServico.tipo_ordem == "VENDA_SERVICO"
@@ -179,8 +214,8 @@ def dashboard_resumo(
     ).filter(
         and_(
             or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-            OrdemServico.data_conclusao >= inicio_mes,
-            OrdemServico.data_conclusao < fim_mes,
+            coluna_data_ordem >= inicio_mes,
+            coluna_data_ordem < fim_mes,
             or_(ItemOrdem.tipo == "PRODUTO", ItemOrdem.tipo == "produto")
         )
     ).scalar() or 0
@@ -233,6 +268,7 @@ def vendas_mensais(
     ano: Optional[int] = None,
     data_inicio: Optional[str] = None,
     data_fim: Optional[str] = None,
+    tipo_data: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Vendas mensais por ano para gráfico - separadas por tipo
@@ -241,7 +277,9 @@ def vendas_mensais(
         ano: Ano para cálculo (ignorado se data_inicio e data_fim forem fornecidas)
         data_inicio: Data inicial no formato YYYY-MM-DD (opcional)
         data_fim: Data final no formato YYYY-MM-DD (opcional)
+        tipo_data: Base do filtro das OS. Aceita abertura ou conclusao (opcional, padrão: conclusao)
     """
+    _, coluna_data_ordem = obter_coluna_data_ordem(tipo_data)
     
     # Determinar intervalo de datas
     if data_inicio and data_fim:
@@ -291,8 +329,8 @@ def vendas_mensais(
         total_mes = db.query(func.sum(OrdemServico.valor_total)).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_consulta,
-                OrdemServico.data_conclusao < fim_consulta
+                coluna_data_ordem >= inicio_consulta,
+                coluna_data_ordem < fim_consulta
             )
         ).scalar() or Decimal('0.00')
         
@@ -317,8 +355,8 @@ def vendas_mensais(
         servicos_mes = db.query(func.sum(serv_net_expr)).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_consulta,
-                OrdemServico.data_conclusao < fim_consulta,
+                coluna_data_ordem >= inicio_consulta,
+                coluna_data_ordem < fim_consulta,
                 or_(
                     OrdemServico.tipo_ordem == "SERVICO",
                     OrdemServico.tipo_ordem == "VENDA_SERVICO"
@@ -329,8 +367,8 @@ def vendas_mensais(
         pecas_mes = db.query(func.sum(pec_net_expr)).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_consulta,
-                OrdemServico.data_conclusao < fim_consulta,
+                coluna_data_ordem >= inicio_consulta,
+                coluna_data_ordem < fim_consulta,
                 or_(
                     OrdemServico.tipo_ordem == "VENDA",
                     OrdemServico.tipo_ordem == "VENDA_SERVICO"
@@ -346,8 +384,8 @@ def vendas_mensais(
         ).filter(
             and_(
                 or_(OrdemServico.status == "CONCLUIDA", OrdemServico.status == "Concluída"),
-                OrdemServico.data_conclusao >= inicio_consulta,
-                OrdemServico.data_conclusao < fim_consulta
+                coluna_data_ordem >= inicio_consulta,
+                coluna_data_ordem < fim_consulta
             )
         ).scalar() or Decimal('0.00')
 
@@ -379,6 +417,7 @@ def vendas_mensais(
 def ordens_por_status(
     data_inicio: Optional[str] = None,
     data_fim: Optional[str] = None,
+    tipo_data: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Distribuição de ordens por status para gráfico pizza
@@ -386,14 +425,28 @@ def ordens_por_status(
     Args:
         data_inicio: Data inicial no formato YYYY-MM-DD (opcional)
         data_fim: Data final no formato YYYY-MM-DD (opcional)
+        tipo_data: Base do filtro das OS. Aceita abertura ou conclusao (opcional, padrão: conclusao)
     """
+    tipo_data_normalizado, coluna_data_ordem = obter_coluna_data_ordem(tipo_data)
     
-    # Construir filtro de datas se fornecidas
+    # Construir filtro de datas se fornecidas.
+    # Para gráfico de status, ordens não concluídas não possuem data_conclusao,
+    # então, quando o filtro estiver por conclusão, usamos data de abertura
+    # para manter essas OS no gráfico (ex.: PENDENTE, EM_ANDAMENTO).
     filters = []
     if data_inicio and data_fim:
         inicio_mes, fim_mes = resolver_intervalo_datas(data_inicio, data_fim)
-        filters.append(OrdemServico.data_conclusao >= inicio_mes)
-        filters.append(OrdemServico.data_conclusao < fim_mes)
+
+        if tipo_data_normalizado == "conclusao":
+            coluna_data_status = func.coalesce(
+                OrdemServico.data_conclusao,
+                func.coalesce(OrdemServico.data_ordem, cast(OrdemServico.data_abertura, SADateTime))
+            )
+        else:
+            coluna_data_status = coluna_data_ordem
+
+        filters.append(coluna_data_status >= inicio_mes)
+        filters.append(coluna_data_status < fim_mes)
     
     status_count = db.query(
         OrdemServico.status,

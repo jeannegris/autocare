@@ -59,6 +59,14 @@ interface FornecedorForm {
   observacoes: string
 }
 
+interface FornecedoresPaginadoResponse {
+  items: Fornecedor[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 const INITIAL_FORM_DATA: FornecedorForm = {
   nome: '',
   razao_social: '',
@@ -76,6 +84,9 @@ const INITIAL_FORM_DATA: FornecedorForm = {
 const Fornecedores: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'cadastro' | 'compras'>('cadastro')
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 20
   const [showModal, setShowModal] = useState(false)
   const [showModalCompra, setShowModalCompra] = useState(false)
   const [showModalSelecionarFornecedor, setShowModalSelecionarFornecedor] = useState(false)
@@ -96,23 +107,36 @@ const Fornecedores: React.FC = () => {
   const api = useApi()
   const queryClient = useQueryClient()
 
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [searchTerm])
+
+  React.useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, showInactive])
+
   // Query para buscar fornecedores
-  const { data: fornecedores = [], isLoading } = useQuery({
-    queryKey: ['fornecedores', searchTerm, showInactive],
+  const { data: fornecedoresPage, isLoading } = useQuery({
+    queryKey: ['fornecedores', 'paginado', currentPage, pageSize, debouncedSearch, showInactive],
     queryFn: async () => {
-      const res = await api.get('/fornecedores', {
+      const res = await api.get('/fornecedores/paginado', {
         params: {
-          search: searchTerm || undefined,
+          page: currentPage,
+          page_size: pageSize,
+          search: debouncedSearch || undefined,
           // Quando showInactive for true queremos buscar os inativos (ativo=false).
           // Quando false, buscar somente ativos (ativo=true).
           ativo: showInactive ? false : true
         }
       })
-      // Garantir que a lista retorne ordenada alfabeticamente por nome
-      const list = res.data as Fornecedor[]
-      return list.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+      return res.data as FornecedoresPaginadoResponse
     }
   })
+  const fornecedores = Array.isArray(fornecedoresPage?.items) ? fornecedoresPage.items : []
+  const totalPages = fornecedoresPage?.total_pages || 1
 
   // Query para buscar compras de fornecedor
   const { data: compras = [] } = useQuery({
@@ -129,11 +153,7 @@ const Fornecedores: React.FC = () => {
       const res = await api.post('/fornecedores', data)
       return res.data
     },
-    onSuccess: (created: Fornecedor) => {
-      queryClient.setQueryData<Fornecedor[] | undefined>(['fornecedores'], (old) => {
-        const list = old ? [...old, created] : [created]
-        return list.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
-      })
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fornecedores'] })
       setShowModal(false)
       setFormData(INITIAL_FORM_DATA)
@@ -148,11 +168,6 @@ const Fornecedores: React.FC = () => {
     },
     onSuccess: (updated: Fornecedor) => {
       console.debug('updateMutation.onSuccess', updated)
-      queryClient.setQueryData<Fornecedor[] | undefined>(['fornecedores'], (old) => {
-        if (!old) return [updated]
-        const next = old.map(f => f.id === updated.id ? updated : f)
-        return next.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
-      })
       queryClient.invalidateQueries({ queryKey: ['fornecedores'] })
       // Atualizar o formulário com os dados salvos do servidor em vez de resetar
       setFormData({
@@ -189,31 +204,7 @@ const Fornecedores: React.FC = () => {
       const res = await api.delete(`/fornecedores/${id}`)
       return res.data
     },
-    // Usar optimistic update para garantir remoção imediata da UI
-    onMutate: async (id: number) => {
-      await queryClient.cancelQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'fornecedores' })
-      // Snapshot dos valores anteriores para rollback
-      const previous: Array<{ queryKey: any; data: Fornecedor[] | undefined }> = []
-      const matches = queryClient.getQueryCache().findAll({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'fornecedores' })
-      matches.forEach(q => {
-        previous.push({ queryKey: q.queryKey, data: queryClient.getQueryData(q.queryKey as any) })
-        queryClient.setQueryData(q.queryKey as any, (old: Fornecedor[] | undefined) => {
-          if (!old) return old
-          return old.filter(f => f.id !== id)
-        })
-      })
-      return { previous }
-    },
-    onError: (_err, _id, context: any) => {
-      // Rollback se falhar
-      if (context?.previous) {
-        context.previous.forEach((p: any) => {
-          queryClient.setQueryData(p.queryKey, p.data)
-        })
-      }
-    },
-    onSettled: () => {
-      // Garantir eventual consistência
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fornecedores'] })
     }
     
@@ -409,12 +400,6 @@ const Fornecedores: React.FC = () => {
     return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
   }
 
-  const filteredFornecedores = fornecedores.filter((fornecedor: Fornecedor) =>
-    fornecedor.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    fornecedor.cnpj?.includes(searchTerm) ||
-    fornecedor.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -497,7 +482,7 @@ const Fornecedores: React.FC = () => {
 
           {/* Lista de fornecedores */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            {filteredFornecedores.length === 0 ? (
+            {fornecedores.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Building className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                 <p className="text-lg">Nenhum fornecedor encontrado</p>
@@ -528,7 +513,7 @@ const Fornecedores: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredFornecedores.map((fornecedor: Fornecedor) => (
+                  {fornecedores.map((fornecedor: Fornecedor) => (
                     <tr key={fornecedor.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
@@ -637,7 +622,7 @@ const Fornecedores: React.FC = () => {
             
             {/* Layout mobile (cards) */}
             <div className="md:hidden divide-y divide-gray-200">
-              {filteredFornecedores.map((fornecedor: Fornecedor) => (
+              {fornecedores.map((fornecedor: Fornecedor) => (
                 <div key={fornecedor.id} className="p-4 hover:bg-gray-50">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
@@ -742,13 +727,35 @@ const Fornecedores: React.FC = () => {
             </div>
           </>
         )}
+
+          {totalPages > 1 && (
+            <div className="border-t border-gray-200 bg-white px-4 py-3 flex items-center justify-between">
+              <p className="text-sm text-gray-600">Página {currentPage} de {totalPages}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Próxima
+                </button>
+              </div>
+            </div>
+          )}
       </div>
 
       {/* Detalhes expandidos */}
       {showDetails && (
         <div className="mt-4 bg-white rounded-lg shadow p-6">
           {(() => {
-            const fornecedor = filteredFornecedores.find((f: Fornecedor) => f.id === showDetails)
+            const fornecedor = fornecedores.find((f: Fornecedor) => f.id === showDetails)
             if (!fornecedor) return null
             
             return (

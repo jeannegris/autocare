@@ -35,7 +35,10 @@ def listar_clientes(
         query = query.filter(
             Cliente.nome.ilike(f"%{search}%") |
             Cliente.cpf_cnpj.ilike(f"%{search}%") |
-            Cliente.email.ilike(f"%{search}%")
+            Cliente.email.ilike(f"%{search}%") |
+            Cliente.telefone.ilike(f"%{search}%") |
+            Cliente.telefone2.ilike(f"%{search}%") |
+            Cliente.whatsapp.ilike(f"%{search}%")
         )
     
     # Se não for informado o parâmetro `ativo`, por padrão retornamos apenas
@@ -161,6 +164,151 @@ def listar_clientes(
         clientes_com_stats.append(cliente_dict)
     
     return clientes_com_stats
+
+
+@router.get("/paginado")
+def listar_clientes_paginado(
+    response: Response,
+    page: int = 1,
+    page_size: int = 20,
+    search: Optional[str] = None,
+    tipo: Optional[str] = None,
+    ativo: Optional[bool] = None,
+    periodo: Optional[str] = "T",  # T=Total, A=Anual, M=Mensal
+    db: Session = Depends(get_db)
+):
+    """Listar clientes com paginação e busca server-side para melhor performance."""
+    from datetime import datetime
+
+    query = db.query(Cliente)
+
+    if search:
+        query = query.filter(
+            Cliente.nome.ilike(f"%{search}%") |
+            Cliente.cpf_cnpj.ilike(f"%{search}%") |
+            Cliente.email.ilike(f"%{search}%") |
+            Cliente.telefone.ilike(f"%{search}%") |
+            Cliente.telefone2.ilike(f"%{search}%") |
+            Cliente.whatsapp.ilike(f"%{search}%") |
+            Cliente.nome_fantasia.ilike(f"%{search}%")
+        )
+
+    if tipo in ("PF", "PJ"):
+        query = query.filter(Cliente.tipo == tipo)
+
+    if ativo is None:
+        query = query.filter(Cliente.ativo == True)
+    else:
+        query = query.filter(Cliente.ativo == ativo)
+
+    total = query.count()
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    skip = (page - 1) * page_size
+
+    clientes = query.order_by(Cliente.id.desc()).offset(skip).limit(page_size).all()
+
+    try:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["X-Stats-Calc"] = "v2"
+    except Exception:
+        pass
+
+    clientes_com_stats = []
+    for cliente in clientes:
+        now = datetime.now()
+        if periodo == "M":
+            data_inicio = now.replace(day=1)
+        elif periodo == "A":
+            data_inicio = now.replace(month=1, day=1)
+        else:
+            data_inicio = None
+
+        ordens_query = db.query(OrdemServico).filter(
+            OrdemServico.cliente_id == cliente.id,
+            OrdemServico.status == 'CONCLUIDA'
+        )
+
+        if data_inicio:
+            ordens_query = ordens_query.filter(OrdemServico.data_conclusao >= data_inicio)
+
+        ordens = ordens_query.all()
+
+        def valor_servico_da_os(os: OrdemServico) -> float:
+            try:
+                if os.tipo_ordem not in ('SERVICO', 'VENDA_SERVICO'):
+                    return 0.0
+                if os.valor_servico is not None and float(os.valor_servico) > 0:
+                    return float(os.valor_servico)
+                if os.valor_mao_obra is not None and float(os.valor_mao_obra) > 0:
+                    return float(os.valor_mao_obra)
+                if os.valor_total is not None and os.valor_pecas is not None:
+                    vt = float(os.valor_total or 0)
+                    vp = float(os.valor_pecas or 0)
+                    if vt - vp > 0:
+                        return vt - vp
+                if hasattr(os, 'itens') and os.itens:
+                    soma = 0.0
+                    for it in os.itens:
+                        try:
+                            if getattr(it, 'tipo', None) == 'SERVICO':
+                                soma += float(it.valor_total or 0)
+                        except Exception:
+                            continue
+                    return soma
+            except Exception:
+                pass
+            return 0.0
+
+        total_gasto = sum(valor_servico_da_os(os) for os in ordens)
+        total_servicos = sum(1 for os in ordens if os.tipo_ordem in ('SERVICO', 'VENDA_SERVICO'))
+
+        veiculos_count = db.query(Veiculo).filter(
+            Veiculo.cliente_id == cliente.id,
+            Veiculo.ativo == True
+        ).count()
+
+        clientes_com_stats.append({
+            "id": cliente.id,
+            "nome": cliente.nome,
+            "cpf_cnpj": cliente.cpf_cnpj,
+            "email": cliente.email,
+            "telefone": cliente.telefone,
+            "telefone2": cliente.telefone2,
+            "whatsapp": cliente.whatsapp,
+            "endereco": cliente.endereco,
+            "numero": cliente.numero,
+            "complemento": cliente.complemento,
+            "bairro": cliente.bairro,
+            "cidade": cliente.cidade,
+            "estado": cliente.estado,
+            "cep": cliente.cep,
+            "rg_ie": cliente.rg_ie,
+            "observacoes": cliente.observacoes,
+            "tipo": cliente.tipo,
+            "nome_fantasia": cliente.nome_fantasia,
+            "razao_social": cliente.razao_social,
+            "contato_responsavel": cliente.contato_responsavel,
+            "data_nascimento": cliente.data_nascimento,
+            "ativo": cliente.ativo,
+            "created_at": cliente.created_at,
+            "updated_at": cliente.updated_at,
+            "total_gasto": total_gasto,
+            "total_servicos": total_servicos,
+            "veiculos_count": veiculos_count
+        })
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+    return {
+        "items": clientes_com_stats,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
 
 @router.get("/buscar-cpf-cnpj/{cpf_cnpj}")
 def buscar_cliente_por_cpf_cnpj(cpf_cnpj: str, db: Session = Depends(get_db)):

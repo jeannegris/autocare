@@ -80,12 +80,42 @@ interface VeiculoFormData {
   observacoes?: string
 }
 
+interface VeiculosPaginadoResponse {
+  items: Veiculo[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 // Hook para buscar veículos
-function useVeiculos() {
+function useVeiculos(params: {
+  page: number
+  pageSize: number
+  search?: string
+  marca?: string
+}) {
   return useQuery({
-    queryKey: ['veiculos'],
-    queryFn: async (): Promise<Veiculo[]> => {
-      return await apiFetch('/veiculos') as Veiculo[]
+    queryKey: ['veiculos', 'paginado', params.page, params.pageSize, params.search || '', params.marca || ''],
+    queryFn: async (): Promise<VeiculosPaginadoResponse> => {
+      const searchParams = new URLSearchParams()
+      searchParams.set('page', String(params.page))
+      searchParams.set('page_size', String(params.pageSize))
+      if (params.search && params.search.trim()) {
+        searchParams.set('search', params.search.trim())
+      }
+      if (params.marca && params.marca.trim()) {
+        searchParams.set('marca', params.marca.trim())
+      }
+      const res = await apiFetch(`/veiculos/paginado?${searchParams.toString()}`)
+      const payload = res as any
+      return {
+        items: Array.isArray(payload?.items) ? payload.items : [],
+        total: typeof payload?.total === 'number' ? payload.total : 0,
+        page: typeof payload?.page === 'number' ? payload.page : params.page,
+        page_size: typeof payload?.page_size === 'number' ? payload.page_size : params.pageSize,
+        total_pages: typeof payload?.total_pages === 'number' ? payload.total_pages : 1
+      }
     }
   })
 }
@@ -128,7 +158,8 @@ function VeiculoModal({
   onSubmit,
   dadosPreenchidos,
   onCadastrarNovoCliente,
-  clienteIdPreSelecionado
+  clienteIdPreSelecionado,
+  clienteNomePreSelecionado
 }: {
   isOpen: boolean
   onClose: () => void
@@ -137,6 +168,7 @@ function VeiculoModal({
   dadosPreenchidos?: { placa?: string; renavam?: string }
   onCadastrarNovoCliente?: () => void
   clienteIdPreSelecionado?: number
+  clienteNomePreSelecionado?: string
 }) {
   const { data: clientes = [] } = useClientes()
   
@@ -314,7 +346,7 @@ function VeiculoModal({
                 <span className={formData.cliente_id === 0 ? 'text-gray-500' : 'text-gray-900'}>
                   {formData.cliente_id === 0 
                     ? 'Selecione um cliente' 
-                    : clientes.find((c: any) => c.id === formData.cliente_id)?.nome || 'Selecione um cliente'
+                    : clientes.find((c: any) => c.id === formData.cliente_id)?.nome || clienteNomePreSelecionado || 'Selecione um cliente'
                   }
                 </span>
                 <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${isDropdownOpen ? 'transform rotate-180' : ''}`} />
@@ -873,6 +905,7 @@ function ConflictModal({
 
 export default function Veiculos() {
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isHistoricoOpen, setIsHistoricoOpen] = useState(false)
   const [isVerificacaoModalOpen, setIsVerificacaoModalOpen] = useState(false)
@@ -881,15 +914,37 @@ export default function Veiculos() {
   const [veiculoPreenchido, setVeiculoPreenchido] = useState<any>(null)
   const [filtroMarca, setFiltroMarca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'EM_DIA' | 'PROXIMO_VENCIMENTO' | 'ATRASADO'>('TODOS')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 20
   
   // Estados para controle de modais de cliente
   const [isVerificacaoClienteOpen, setIsVerificacaoClienteOpen] = useState(false)
   const [isNovoClienteModalOpen, setIsNovoClienteModalOpen] = useState(false)
   const [clientePreenchido, setClientePreenchido] = useState<any>(null)
   const [clienteSelecionadoId, setClienteSelecionadoId] = useState<number>(0)
+  const [clienteSelecionadoNome, setClienteSelecionadoNome] = useState<string>('')
 
   const queryClient = useQueryClient()
-  const { data: veiculos = [], isLoading, error } = useVeiculos()
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [searchTerm])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, filtroMarca, filtroStatus])
+
+  const { data: veiculosPage, isLoading, error } = useVeiculos({
+    page: currentPage,
+    pageSize,
+    search: debouncedSearch,
+    marca: filtroMarca
+  })
+  const veiculos = Array.isArray(veiculosPage?.items) ? veiculosPage.items : []
+  const totalVeiculos = veiculosPage?.total || 0
+  const totalPages = veiculosPage?.total_pages || 1
   const [conflictOpen, setConflictOpen] = useState(false)
   const [conflictExistingId, setConflictExistingId] = useState<number | null>(null)
   const [conflictExistingAtivo, setConflictExistingAtivo] = useState<boolean | null>(null)
@@ -946,23 +1001,8 @@ export default function Veiculos() {
         body: JSON.stringify(data)
       }) as Veiculo
     },
-    // Suporte a atualização otimista com rollback
-    onMutate: async ({ id, data }: { id: number; data: VeiculoFormData }) => {
-      await queryClient.cancelQueries({ queryKey: ['veiculos'] })
-      const previous = queryClient.getQueryData(['veiculos'])
-      // aplicar mudança otimista
-      queryClient.setQueryData(['veiculos'], (old: any) => {
-        if (!old) return old
-        return old.map((v: Veiculo) => v.id === id ? { ...v, ...data, updated_at: new Date().toISOString() } : v)
-      })
-      return { previous }
-    },
-    onError: (err: any, _variables: any, context: any) => {
+    onError: (err: any) => {
       console.error('Erro ao atualizar veículo', err)
-      // rollback se disponível
-      if (context?.previous) {
-        queryClient.setQueryData(['veiculos'], context.previous)
-      }
       // Se backend respondeu com detalhe de conflito (409), abrir modal de conflito
       const status = err?.status || (err?.json && err.json.status) || null
       const detail = err?.json?.detail || err?.body || null
@@ -978,12 +1018,7 @@ export default function Veiculos() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['veiculos'] })
     },
-    onSuccess: (updated: Veiculo) => {
-      // garante que cache tenha o valor retornado pelo servidor
-      queryClient.setQueryData(['veiculos'], (old: any) => {
-        if (!old) return [updated]
-        return old.map((v: Veiculo) => v.id === updated.id ? updated : v)
-      })
+    onSuccess: () => {
       setIsModalOpen(false)
       setEditingVeiculo(undefined)
     }
@@ -1004,16 +1039,6 @@ export default function Veiculos() {
 
   const handleSubmit = (data: VeiculoFormData) => {
     if (editingVeiculo) {
-      // Atualização otimista: atualiza cache local com os valores do formulário
-      try {
-        const optimistic: Veiculo = { ...editingVeiculo, ...data, updated_at: new Date().toISOString() }
-        queryClient.setQueryData(['veiculos'], (old: any) => {
-          if (!old) return [optimistic]
-          return old.map((v: Veiculo) => v.id === optimistic.id ? optimistic : v)
-        })
-      } catch (e) {
-        // ignore
-      }
       updateMutation.mutate({ id: editingVeiculo.id, data })
     } else {
       createMutation.mutate(data)
@@ -1027,14 +1052,7 @@ export default function Veiculos() {
       const fresh = await apiFetch(`/veiculos/${veiculo.id}`) as Veiculo
       setEditingVeiculo(fresh)
     } catch (e) {
-      // Se o fetch falhar, tentar usar a versão do cache ou o objeto passado
-      try {
-        const cached: Veiculo[] | undefined = queryClient.getQueryData(['veiculos'])
-        const freshCache = cached ? cached.find(v => v.id === veiculo.id) : undefined
-        setEditingVeiculo(freshCache || veiculo)
-      } catch (e2) {
-        setEditingVeiculo(veiculo)
-      }
+      setEditingVeiculo(veiculo)
     }
     setIsModalOpen(true)
   }
@@ -1080,8 +1098,9 @@ export default function Veiculos() {
   }
 
   const handleClienteEncontrado = (cliente: any) => {
-    // Cliente encontrado, armazena o ID para seleção automática
+    // Cliente encontrado, armazena o ID e nome para seleção automática
     setClienteSelecionadoId(cliente.id)
+    setClienteSelecionadoNome(cliente.nome || '')
     setIsVerificacaoClienteOpen(false)
     // Atualiza a lista de clientes no cache
     queryClient.invalidateQueries({ queryKey: ['clientes-dropdown'] })
@@ -1124,9 +1143,10 @@ export default function Veiculos() {
   }
 
   const handleClienteCadastrado = (novoCliente: any) => {
-    // Cliente cadastrado com sucesso, armazena o ID para seleção automática
+    // Cliente cadastrado com sucesso, armazena o ID e nome para seleção automática
     if (novoCliente && novoCliente.id) {
       setClienteSelecionadoId(novoCliente.id)
+      setClienteSelecionadoNome(novoCliente.nome || '')
     }
     setIsNovoClienteModalOpen(false)
     setClientePreenchido(null)
@@ -1160,17 +1180,10 @@ export default function Veiculos() {
   const marcasUnicas = [...new Set(veiculos.map(v => v.marca))].sort()
   
   const filteredVeiculos = veiculos.filter(veiculo => {
-    const term = searchTerm.toLowerCase()
-    const matchesSearch = 
-      (veiculo.placa || '').toLowerCase().includes(term) ||
-      (veiculo.marca || '').toLowerCase().includes(term) ||
-      (veiculo.modelo || '').toLowerCase().includes(term) ||
-      (veiculo.cliente_nome || '').toLowerCase().includes(term)
-
     const matchesMarca = filtroMarca === '' || veiculo.marca === filtroMarca
     const matchesStatus = filtroStatus === 'TODOS' || veiculo.status_manutencao === filtroStatus
 
-    return matchesSearch && matchesMarca && matchesStatus
+    return matchesMarca && matchesStatus
   })
 
   const getStatusColor = (status?: string) => {
@@ -1223,7 +1236,7 @@ export default function Veiculos() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Gestão de Veículos</h1>
           <p className="text-gray-600 mt-1">
-            {veiculos.length} veículo{veiculos.length !== 1 ? 's' : ''} cadastrado{veiculos.length !== 1 ? 's' : ''}
+            {totalVeiculos} veículo{totalVeiculos !== 1 ? 's' : ''} cadastrado{totalVeiculos !== 1 ? 's' : ''}
           </p>
         </div>
         <button
@@ -1395,6 +1408,28 @@ export default function Veiculos() {
         ))}
       </div>
 
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-gray-600">Página {currentPage} de {totalPages}</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Anterior
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal de conflito */}
       <ConflictModal
         isOpen={conflictOpen}
@@ -1443,12 +1478,14 @@ export default function Veiculos() {
           setEditingVeiculo(undefined)
           setVeiculoPreenchido(null)
           setClienteSelecionadoId(0)
+          setClienteSelecionadoNome('')
         }}
         veiculo={editingVeiculo}
         onSubmit={handleSubmit}
         dadosPreenchidos={veiculoPreenchido}
         onCadastrarNovoCliente={handleCadastrarNovoCliente}
         clienteIdPreSelecionado={clienteSelecionadoId}
+        clienteNomePreSelecionado={clienteSelecionadoNome}
       />
 
       <HistoricoModal

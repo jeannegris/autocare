@@ -50,6 +50,50 @@ def listar_veiculos(
     veiculos = query.order_by(Veiculo.id.asc()).offset(skip).limit(limit).all()
     return veiculos
 
+
+@router.get("/paginado")
+def listar_veiculos_paginado(
+    page: int = 1,
+    page_size: int = 20,
+    search: Optional[str] = None,
+    marca: Optional[str] = None,
+    ativo: Optional[bool] = None,
+    db: Session = Depends(get_db)
+):
+    """Listar veículos com paginação e busca server-side."""
+    query = db.query(Veiculo)
+
+    if search:
+        query = query.filter(
+            Veiculo.marca.ilike(f"%{search}%") |
+            Veiculo.modelo.ilike(f"%{search}%") |
+            Veiculo.placa.ilike(f"%{search}%")
+        )
+
+    if marca:
+        query = query.filter(Veiculo.marca == marca)
+
+    if ativo is None:
+        query = query.filter(Veiculo.ativo == True)
+    else:
+        query = query.filter(Veiculo.ativo == ativo)
+
+    total = query.count()
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    skip = (page - 1) * page_size
+
+    veiculos = query.order_by(Veiculo.id.desc()).offset(skip).limit(page_size).all()
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+    return {
+        "items": veiculos,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
 @router.get("/{veiculo_id}", response_model=VeiculoResponse)
 def buscar_veiculo(veiculo_id: int, db: Session = Depends(get_db)):
     """Buscar veículo por ID"""

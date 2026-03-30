@@ -40,6 +40,46 @@ def listar_fornecedores(
     fornecedores = query.offset(skip).limit(limit).all()
     return fornecedores
 
+
+@router.get("/paginado")
+def listar_fornecedores_paginado(
+    page: int = 1,
+    page_size: int = 20,
+    search: Optional[str] = None,
+    ativo: Optional[bool] = None,
+    db: Session = Depends(get_db)
+):
+    """Listar fornecedores com paginação e busca server-side."""
+    query = db.query(Fornecedor)
+
+    if search:
+        query = query.filter(
+            Fornecedor.nome.ilike(f"%{search}%") |
+            Fornecedor.cnpj.ilike(f"%{search}%") |
+            Fornecedor.email.ilike(f"%{search}%")
+        )
+
+    if ativo is None:
+        query = query.filter(Fornecedor.ativo == True)
+    else:
+        query = query.filter(Fornecedor.ativo == ativo)
+
+    total = query.count()
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    skip = (page - 1) * page_size
+
+    fornecedores = query.order_by(Fornecedor.id.desc()).offset(skip).limit(page_size).all()
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+    return {
+        "items": fornecedores,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
 @router.get("/{fornecedor_id}", response_model=FornecedorResponse)
 def buscar_fornecedor(fornecedor_id: int, db: Session = Depends(get_db)):
     """Buscar fornecedor por ID"""

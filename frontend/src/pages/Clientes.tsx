@@ -29,6 +29,7 @@ import { DollarSign, Wrench } from 'lucide-react'
 import { format, differenceInYears } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import ModalVerificacaoCliente from '../components/ModalVerificacaoCliente'
+import ModalVisualizarCliente from '../components/ModalVisualizarCliente'
 import {
   buscarCEP,
   useValidacao
@@ -86,18 +87,49 @@ interface ClienteFormData {
   observacoes?: string
 }
 
+interface ClientesPaginadoResponse {
+  items: Cliente[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 // Hook para buscar clientes
-function useClientes(periodo: string = 'T') {
+function useClientes(params: {
+  periodo?: string
+  page: number
+  pageSize: number
+  search?: string
+  tipo?: 'TODOS' | 'PF' | 'PJ'
+}) {
+  const periodo = params.periodo || 'T'
   return useQuery({
-    queryKey: ['clientes', periodo],
-    queryFn: async (): Promise<Cliente[]> => {
-      const res = await apiFetch(`/clientes?periodo=${periodo}`)
-      if (!Array.isArray(res)) {
-        // eslint-disable-next-line no-console
-        console.error('useClientes: esperado array de clientes, recebeu:', res)
-        return [] as Cliente[]
+    queryKey: ['clientes', 'paginado', periodo, params.page, params.pageSize, params.search || '', params.tipo || 'TODOS'],
+    queryFn: async (): Promise<ClientesPaginadoResponse> => {
+      const searchParams = new URLSearchParams()
+      searchParams.set('periodo', periodo)
+      searchParams.set('page', String(params.page))
+      searchParams.set('page_size', String(params.pageSize))
+      if (params.search && params.search.trim()) {
+        searchParams.set('search', params.search.trim())
       }
-      return res as Cliente[]
+      if (params.tipo && params.tipo !== 'TODOS') {
+        searchParams.set('tipo', params.tipo)
+      }
+
+      const res = await apiFetch(`/clientes/paginado?${searchParams.toString()}`)
+      if (!res || typeof res !== 'object') {
+        return { items: [], total: 0, page: params.page, page_size: params.pageSize, total_pages: 1 }
+      }
+      const payload = res as any
+      return {
+        items: Array.isArray(payload.items) ? payload.items : [],
+        total: typeof payload.total === 'number' ? payload.total : 0,
+        page: typeof payload.page === 'number' ? payload.page : params.page,
+        page_size: typeof payload.page_size === 'number' ? payload.page_size : params.pageSize,
+        total_pages: typeof payload.total_pages === 'number' ? payload.total_pages : 1
+      }
     },
     // Sempre buscar dados frescos ao montar/trocar período
     refetchOnMount: 'always',
@@ -748,9 +780,12 @@ function ClienteModal({
 
 export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | undefined>()
   const [filtroTipo, setFiltroTipo] = useState<'TODOS' | 'PF' | 'PJ'>('TODOS')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 20
   // Controle de período por cliente: { [clienteId]: 'T' | 'A' | 'M' }
   const [periodoPorCliente, setPeriodoPorCliente] = useState<Record<number, 'T' | 'A' | 'M'>>({})
   // Cache de estatísticas por cliente e período: { [clienteId]: { T?: Stats; A?: Stats; M?: Stats } }
@@ -758,6 +793,9 @@ export default function Clientes() {
   const [statsPorCliente, setStatsPorCliente] = useState<Record<number, { T?: Stats; A?: Stats; M?: Stats }>>({})
   const [loadingStatsCliente, setLoadingStatsCliente] = useState<Record<number, boolean>>({})
   
+  // Estado para modal de visualização do cliente
+  const [clienteVisualizandoId, setClienteVisualizandoId] = useState<number | null>(null)
+
   // Estados para o novo modal de verificação
   const [isVerificacaoModalOpen, setIsVerificacaoModalOpen] = useState(false)
   const [clientePreenchido, setClientePreenchido] = useState<{
@@ -767,8 +805,27 @@ export default function Clientes() {
   } | null>(null)
 
   const queryClient = useQueryClient()
-  // Buscamos a lista de clientes com período padrão Total (T)
-  const { data: clientes = [], isLoading, error } = useClientes('T')
+  // Debounce da busca para evitar múltiplas chamadas por tecla digitada
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [searchTerm])
+
+  // Sempre que filtros mudarem, voltar para primeira página
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, filtroTipo])
+
+  // Busca paginada no servidor
+  const { data: clientesPage, isLoading, error } = useClientes({
+    periodo: 'T',
+    page: currentPage,
+    pageSize,
+    search: debouncedSearch,
+    tipo: filtroTipo
+  })
   const [pendingReactivation, setPendingReactivation] = useState<{
     existingId: number
     message: string
@@ -1035,7 +1092,9 @@ export default function Clientes() {
     return differenceInYears(new Date(), new Date(dataNascimento))
   }
 
-  const safeClientes = Array.isArray(clientes) ? clientes : []
+  const safeClientes = Array.isArray(clientesPage?.items) ? clientesPage!.items : []
+  const totalClientes = clientesPage?.total || 0
+  const totalPages = clientesPage?.total_pages || 1
 
   // Sincroniza o cache de estatísticas (slot T) com os valores retornados na lista
   // para garantir que o período "Total" do card sempre reflita a API atual.
@@ -1082,22 +1141,6 @@ export default function Clientes() {
       setLoadingStatsCliente((prev) => ({ ...prev, [clienteId]: false }))
     }
   }
-  const filteredClientes = safeClientes.filter(cliente => {
-    // Prote??o contra cliente null/undefined
-    if (!cliente) return false
-    
-    const matchesSearch = 
-      (cliente?.nome?.toLowerCase?.()?.includes(searchTerm.toLowerCase())) ||
-      (cliente?.email?.toLowerCase?.()?.includes(searchTerm.toLowerCase())) ||
-      (cliente?.cpf_cnpj?.includes?.(searchTerm)) ||
-      (cliente?.telefone?.includes?.(searchTerm)) ||
-      (cliente?.nome_fantasia?.toLowerCase?.()?.includes(searchTerm.toLowerCase()))
-    
-    const matchesTipo = filtroTipo === 'TODOS' || cliente.tipo === filtroTipo
-    
-    return matchesSearch && matchesTipo
-  })
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1122,7 +1165,7 @@ export default function Clientes() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Gestão de Clientes</h1>
           <p className="text-gray-600 mt-1">
-            {clientes.length} cliente{clientes.length !== 1 ? 's' : ''} cadastrado{clientes.length !== 1 ? 's' : ''}
+            {totalClientes} cliente{totalClientes !== 1 ? 's' : ''} cadastrado{totalClientes !== 1 ? 's' : ''}
           </p>
         </div>
         <button
@@ -1162,7 +1205,7 @@ export default function Clientes() {
 
       {/* Cards de Clientes */}
       <div className="grid grid-cols-1 gap-6">
-        {filteredClientes.map((cliente) => (
+        {safeClientes.map((cliente) => (
           <div key={cliente.id} className="bg-white shadow-md rounded-lg border border-gray-200 hover:shadow-lg transition-shadow duration-200 overflow-hidden">
             <div className="p-4 sm:p-6">
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between space-y-4 lg:space-y-0">
@@ -1323,8 +1366,9 @@ export default function Clientes() {
                     <Edit2 className="h-4 w-4" />
                   </button>
                   <button
+                    onClick={() => setClienteVisualizandoId(cliente.id)}
                     className="text-gray-600 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-50"
-                    title="Ver histórico"
+                    title="Visualizar cliente"
                   >
                     <Eye className="h-4 w-4" />
                   </button>
@@ -1348,20 +1392,44 @@ export default function Clientes() {
         ))}
       </div>
 
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-gray-600">
+            Página {currentPage} de {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Anterior
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Estado vazio */}
-      {filteredClientes.length === 0 && (
+      {safeClientes.length === 0 && (
         <div className="text-center py-12">
           <Users className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">
-            {searchTerm || filtroTipo !== 'TODOS' ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
+            {debouncedSearch || filtroTipo !== 'TODOS' ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
-            {searchTerm || filtroTipo !== 'TODOS' 
+            {debouncedSearch || filtroTipo !== 'TODOS' 
               ? 'Tente ajustar os filtros de busca.' 
               : 'Comece criando um novo cliente para o seu AutoCenter.'
             }
           </p>
-          {!searchTerm && filtroTipo === 'TODOS' && (
+          {!debouncedSearch && filtroTipo === 'TODOS' && (
             <div className="mt-6">
               <button
                 onClick={() => {
@@ -1377,6 +1445,13 @@ export default function Clientes() {
           )}
         </div>
       )}
+
+      {/* Modal de Visualização do Cliente */}
+      <ModalVisualizarCliente
+        isOpen={clienteVisualizandoId !== null}
+        onClose={() => setClienteVisualizandoId(null)}
+        clienteId={clienteVisualizandoId}
+      />
 
       {/* Modal de Verificação de Cliente */}
       <ModalVerificacaoCliente

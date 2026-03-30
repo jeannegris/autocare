@@ -261,9 +261,12 @@ def relatorio_movimentacao_estoque(
         MovimentoEstoque.motivo,
         MovimentoEstoque.observacoes,
         MovimentoEstoque.ordem_servico_id,
+        OrdemServico.numero.label('ordem_servico_numero'),
         Fornecedor.nome.label('fornecedor')
     ).join(
         Produto, MovimentoEstoque.item_id == Produto.id
+    ).outerjoin(
+        OrdemServico, MovimentoEstoque.ordem_servico_id == OrdemServico.id
     ).outerjoin(
         Fornecedor, MovimentoEstoque.fornecedor_id == Fornecedor.id
     ).filter(
@@ -306,7 +309,7 @@ def relatorio_movimentacao_estoque(
                 "preco_unitario": float(mov.preco_unitario) if mov.preco_unitario else 0,
                 "valor_total": float(mov.valor_total) if mov.valor_total is not None else float(mov.quantidade * (mov.preco_unitario or 0)),
                 "motivo": mov.motivo,
-                "documento": f"OS {mov.ordem_servico_id}" if mov.ordem_servico_id else None,
+                "documento": f"OS {mov.ordem_servico_numero}" if mov.ordem_servico_numero else (f"OS {mov.ordem_servico_id}" if mov.ordem_servico_id else None),
                 "observacoes": mov.observacoes,
                 "fornecedor": mov.fornecedor
             }

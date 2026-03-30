@@ -105,14 +105,35 @@ interface DashboardData {
   ordemStatus: OrdemStatus[];
 }
 
+type TipoDataFiltroDashboard = 'conclusao' | 'abertura'
+
+function obterMensagemErroDashboard(error: any): string {
+  if (typeof error?.detail === 'string' && error.detail.trim()) {
+    return error.detail
+  }
+
+  if (typeof error?.json?.detail === 'string' && error.json.detail.trim()) {
+    return error.json.detail
+  }
+
+  return 'Erro ao carregar dados do dashboard'
+}
+
 // Hook personalizado para buscar dados do dashboard
-function useDashboardData(dataInicio?: string, dataFim?: string): { data: DashboardData | null, isLoading: boolean, error: any } {
+function useDashboardData(
+  dataInicio?: string,
+  dataFim?: string,
+  tipoData: TipoDataFiltroDashboard = 'conclusao',
+  habilitado = true
+): { data: DashboardData | null, isLoading: boolean, error: any } {
   const resumoQuery = useQuery({
-    queryKey: ['dashboard-resumo', dataInicio, dataFim],
+    queryKey: ['dashboard-resumo', dataInicio, dataFim, tipoData],
+    enabled: habilitado,
     queryFn: async () => {
       const params = new URLSearchParams()
       if (dataInicio) params.append('data_inicio', dataInicio)
       if (dataFim) params.append('data_fim', dataFim)
+      params.append('tipo_data', tipoData)
       const queryString = params.toString()
       const url = queryString ? `/dashboard/resumo?${queryString}` : '/dashboard/resumo'
       return await apiFetch(url)
@@ -120,11 +141,20 @@ function useDashboardData(dataInicio?: string, dataFim?: string): { data: Dashbo
   });
 
   const vendasQuery = useQuery({
-    queryKey: ['vendas-mensais', dataInicio, dataFim],
+    queryKey: ['vendas-mensais', tipoData, dataFim],
+    enabled: habilitado,
     queryFn: async () => {
+      const formatarDataISO = (d: Date) => d.toISOString().split('T')[0]
+      const dataReferencia = dataFim ? new Date(`${dataFim}T00:00:00`) : new Date()
+
+      // Janela móvel de 12 meses ancorada na data final do filtro.
+      const inicioJanela = new Date(dataReferencia.getFullYear(), dataReferencia.getMonth() - 11, 1)
+      const fimJanela = new Date(dataReferencia.getFullYear(), dataReferencia.getMonth() + 1, 0)
+
       const params = new URLSearchParams()
-      if (dataInicio) params.append('data_inicio', dataInicio)
-      if (dataFim) params.append('data_fim', dataFim)
+      params.append('data_inicio', formatarDataISO(inicioJanela))
+      params.append('data_fim', formatarDataISO(fimJanela))
+      params.append('tipo_data', tipoData)
       const queryString = params.toString()
       const url = queryString ? `/dashboard/vendas-mensais?${queryString}` : '/dashboard/vendas-mensais'
       return await apiFetch(url)
@@ -132,11 +162,13 @@ function useDashboardData(dataInicio?: string, dataFim?: string): { data: Dashbo
   });
 
   const ordensStatusQuery = useQuery({
-    queryKey: ['ordens-status', dataInicio, dataFim],
+    queryKey: ['ordens-status', dataInicio, dataFim, tipoData],
+    enabled: habilitado,
     queryFn: async () => {
       const params = new URLSearchParams()
       if (dataInicio) params.append('data_inicio', dataInicio)
       if (dataFim) params.append('data_fim', dataFim)
+      params.append('tipo_data', tipoData)
       const queryString = params.toString()
       const url = queryString ? `/dashboard/ordens-status?${queryString}` : '/dashboard/ordens-status'
       return await apiFetch(url)
@@ -145,6 +177,7 @@ function useDashboardData(dataInicio?: string, dataFim?: string): { data: Dashbo
 
   const alertasQuery = useQuery({
     queryKey: ['dashboard-alertas', dataInicio, dataFim],
+    enabled: habilitado,
     queryFn: async () => {
       const params = new URLSearchParams()
       if (dataInicio) params.append('data_inicio', dataInicio)
@@ -156,6 +189,10 @@ function useDashboardData(dataInicio?: string, dataFim?: string): { data: Dashbo
   });
 
   // Combine all data
+  if (!habilitado) {
+    return { data: null, isLoading: false, error: null };
+  }
+
   const isLoading = resumoQuery.isLoading || vendasQuery.isLoading || ordensStatusQuery.isLoading || alertasQuery.isLoading;
   const error = resumoQuery.error || vendasQuery.error || ordensStatusQuery.error || alertasQuery.error;
 
@@ -212,8 +249,12 @@ export default function Dashboard() {
   const formatoData = (data: Date) => data.toISOString().split('T')[0]
   const [dataInicio, setDataInicio] = useState(formatoData(primeiroDiaMes))
   const [dataFim, setDataFim] = useState(formatoData(ultimoDiaMes))
+  const [tipoData, setTipoData] = useState<TipoDataFiltroDashboard>('conclusao')
+  const mensagemErroDatas = dataInicio > dataFim
+    ? 'Data Inicio não pode ser maior que a Data Fim, favor ajustar!'
+    : null
   
-  const { data, isLoading, error } = useDashboardData(dataInicio, dataFim)
+  const { data, isLoading, error } = useDashboardData(dataInicio, dataFim, tipoData, !mensagemErroDatas)
 
   // Verificar se o usuário tem permissão gerencial (pode ver valores de receita)
   const temPermissaoGerencial = hasPermission('dashboard_gerencial')
@@ -226,10 +267,18 @@ export default function Dashboard() {
     )
   }
 
+  if (mensagemErroDatas) {
+    return (
+      <div className="p-4 rounded-md bg-red-50 border border-red-200">
+        <p className="text-red-800 font-medium">{mensagemErroDatas}</p>
+      </div>
+    )
+  }
+
   if (error || !data) {
     return (
-      <div className="p-4 rounded-md bg-red-50">
-        <p className="text-red-800">Erro ao carregar dados do dashboard</p>
+      <div className="p-4 rounded-md bg-red-50 border border-red-200">
+        <p className="text-red-800 font-medium">{obterMensagemErroDashboard(error)}</p>
       </div>
     )
   }
@@ -316,6 +365,17 @@ export default function Dashboard() {
               Período de Análise
             </label>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+              <div className="w-full sm:max-w-xs">
+                <label className="block text-xs text-gray-600 mb-1">Filtrar OS por</label>
+                <select
+                  value={tipoData}
+                  onChange={(e) => setTipoData(e.target.value as TipoDataFiltroDashboard)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="conclusao">Data de conclusão da OS</option>
+                  <option value="abertura">Data de abertura da OS</option>
+                </select>
+              </div>
               <div className="flex-1">
                 <label className="block text-xs text-gray-600 mb-1">Data Inicial</label>
                 <input
@@ -351,22 +411,16 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid - Primeira linha */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6">
         <div className="overflow-hidden bg-white border-l-4 border-blue-500 rounded-lg shadow">
           <div className="p-5">
-            <div className="flex items-center">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium leading-5 text-gray-500">Total Clientes</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalClientes}</p>
+              </div>
               <div className="flex-shrink-0">
                 <Users className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="flex-1 w-0 ml-5">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Total Clientes
-                  </dt>
-                  <dd className="text-2xl font-bold text-gray-900">
-                    {stats.totalClientes}
-                  </dd>
-                </dl>
               </div>
             </div>
           </div>
@@ -374,19 +428,13 @@ export default function Dashboard() {
 
         <div className="overflow-hidden bg-white border-l-4 border-green-500 rounded-lg shadow">
           <div className="p-5">
-            <div className="flex items-center">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium leading-5 text-gray-500">Veículos Cadastrados</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalVeiculos}</p>
+              </div>
               <div className="flex-shrink-0">
                 <Car className="w-8 h-8 text-green-600" />
-              </div>
-              <div className="flex-1 w-0 ml-5">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Veículos Cadastrados
-                  </dt>
-                  <dd className="text-2xl font-bold text-gray-900">
-                    {stats.totalVeiculos}
-                  </dd>
-                </dl>
               </div>
             </div>
           </div>
@@ -394,25 +442,19 @@ export default function Dashboard() {
 
         <div className="overflow-hidden bg-white border-l-4 border-yellow-500 rounded-lg shadow">
           <div className="p-5">
-            <div className="flex items-center">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium leading-5 text-gray-500">Peças em Estoque</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalPecasEstoque}</p>
+                {stats.alertasEstoque > 0 && (
+                  <p className="flex items-center mt-1 text-xs text-red-600">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    {stats.alertasEstoque} com estoque baixo
+                  </p>
+                )}
+              </div>
               <div className="flex-shrink-0">
                 <Package className="w-8 h-8 text-yellow-600" />
-              </div>
-              <div className="flex-1 w-0 ml-5">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Peças em Estoque
-                  </dt>
-                  <dd className="text-2xl font-bold text-gray-900">
-                    {stats.totalPecasEstoque}
-                  </dd>
-                  {stats.alertasEstoque > 0 && (
-                    <dd className="flex items-center mt-1 text-xs text-red-600">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
-                      {stats.alertasEstoque} com estoque baixo
-                    </dd>
-                  )}
-                </dl>
               </div>
             </div>
           </div>
@@ -420,108 +462,18 @@ export default function Dashboard() {
 
         <div className="overflow-hidden bg-white border-l-4 border-purple-500 rounded-lg shadow">
           <div className="p-5">
-            <div className="flex items-center">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium leading-5 text-gray-500">Ordens Abertas</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.ordensAbertas}</p>
+                <p className="mt-1 text-xs text-gray-600">{stats.ordensHoje} hoje</p>
+              </div>
               <div className="flex-shrink-0">
                 <Wrench className="w-8 h-8 text-purple-600" />
-              </div>
-              <div className="flex-1 w-0 ml-5">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Ordens Abertas
-                  </dt>
-                  <dd className="text-2xl font-bold text-gray-900">
-                    {stats.ordensAbertas}
-                  </dd>
-                  <dd className="mt-1 text-xs text-gray-600">
-                    {stats.ordensHoje} hoje
-                  </dd>
-                </dl>
               </div>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Stats Grid - Segunda linha */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {temPermissaoGerencial && (
-          <div className="overflow-hidden bg-white rounded-lg shadow">
-            <div className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Receita Bruta</p>
-                  <p className="text-3xl font-bold text-gray-900">
-                    R$ {(stats.receitaMensal != null ? stats.receitaMensal : 0).toLocaleString('pt-BR')}
-                  </p>
-                </div>
-                <div className="flex items-center">
-                  {stats.crescimentoMensal >= 0 ? (
-                    <TrendingUp className="w-5 h-5 text-green-500" />
-                  ) : (
-                    <TrendingDown className="w-5 h-5 text-red-500" />
-                  )}
-                  <span className={`ml-1 text-sm font-medium ${
-                    stats.crescimentoMensal >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {stats.crescimentoMensal > 0 ? '+' : ''}{stats.crescimentoMensal}%
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 text-xs text-gray-600">
-                Receita hoje: R$ {(stats.receitaDiaria != null ? stats.receitaDiaria : 0).toLocaleString('pt-BR')}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {temPermissaoGerencial && (
-          <div className="overflow-hidden bg-white rounded-lg shadow">
-            <div className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Custo Mensal</p>
-                  <p className="text-3xl font-bold text-gray-900">
-                    R$ {(stats.custoMensal != null ? stats.custoMensal : 0).toLocaleString('pt-BR')}
-                  </p>
-                </div>
-                <div className="flex-shrink-0">
-                  <TrendingDown className="w-8 h-8 text-red-600" />
-                </div>
-              </div>
-              <div className="mt-4 space-y-2 text-xs text-gray-600 border-t pt-3">
-                <div className="flex justify-between">
-                  <span>Custo de Peças:</span>
-                  <span className="font-semibold text-gray-900">R$ {(stats.custoPecas != null ? stats.custoPecas : 0).toLocaleString('pt-BR')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Mão de Obra Avulsa:</span>
-                  <span className="font-semibold text-gray-900">R$ {(stats.maoObraAvulsa != null ? stats.maoObraAvulsa : 0).toLocaleString('pt-BR')}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {temPermissaoGerencial && (
-          <div className="overflow-hidden bg-white rounded-lg shadow border-l-4 border-green-500">
-            <div className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Receita Líquida</p>
-                  <p className="text-3xl font-bold text-green-600">
-                    R$ {(stats.receitaLiquida != null ? stats.receitaLiquida : 0).toLocaleString('pt-BR')}
-                  </p>
-                </div>
-                <div className="flex-shrink-0">
-                  <TrendingUp className="w-8 h-8 text-green-600" />
-                </div>
-              </div>
-              <div className="mt-3 text-xs text-gray-600">
-                Bruta - Custos
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="overflow-hidden bg-white rounded-lg shadow">
           <div className="p-5">
@@ -553,6 +505,84 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Stats Grid - Segunda linha */}
+      {temPermissaoGerencial && (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="overflow-hidden bg-white rounded-lg shadow">
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Receita Bruta</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    R$ {(stats.receitaMensal != null ? stats.receitaMensal : 0).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <div className="flex items-center">
+                  {stats.crescimentoMensal >= 0 ? (
+                    <TrendingUp className="w-5 h-5 text-green-500" />
+                  ) : (
+                    <TrendingDown className="w-5 h-5 text-red-500" />
+                  )}
+                  <span className={`ml-1 text-sm font-medium ${
+                    stats.crescimentoMensal >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {stats.crescimentoMensal > 0 ? '+' : ''}{stats.crescimentoMensal}%
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-gray-600">
+                Receita hoje: R$ {(stats.receitaDiaria != null ? stats.receitaDiaria : 0).toLocaleString('pt-BR')}
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden bg-white rounded-lg shadow">
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Custo Mensal</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    R$ {(stats.custoMensal != null ? stats.custoMensal : 0).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <TrendingDown className="w-8 h-8 text-red-600" />
+                </div>
+              </div>
+              <div className="mt-4 space-y-2 text-xs text-gray-600 border-t pt-3">
+                <div className="flex justify-between">
+                  <span>Custo de Peças:</span>
+                  <span className="font-semibold text-gray-900">R$ {(stats.custoPecas != null ? stats.custoPecas : 0).toLocaleString('pt-BR')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Mão de Obra Avulsa:</span>
+                  <span className="font-semibold text-gray-900">R$ {(stats.maoObraAvulsa != null ? stats.maoObraAvulsa : 0).toLocaleString('pt-BR')}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden bg-white rounded-lg shadow border-l-4 border-green-500">
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Receita Líquida</p>
+                  <p className="text-3xl font-bold text-green-600">
+                    R$ {(stats.receitaLiquida != null ? stats.receitaLiquida : 0).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <TrendingUp className="w-8 h-8 text-green-600" />
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-gray-600">
+                Bruta - Custos
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Alertas e Notificações */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
