@@ -9,6 +9,7 @@ import ModalBuscaNovoProprietario from './ModalBuscaNovoProprietario';
 interface ModalBuscaClienteVeiculoProps {
   isOpen: boolean;
   onClose: () => void;
+  clientePreSelecionado?: ClienteBuscaResponse['cliente'] | null;
   onClienteEncontrado: (cliente: ClienteBuscaResponse['cliente'], veiculoPreSelecionado?: VeiculoBuscaResponse['veiculo']) => void;
   onNovoCliente: (termoBusca?: string) => void;
   // Agora aceita termo opcional para pré-preenchimento quando vem do fluxo de novo proprietário
@@ -22,6 +23,7 @@ type TipoBusca = 'cliente' | 'veiculo';
 export default function ModalBuscaClienteVeiculo({
   isOpen,
   onClose,
+  clientePreSelecionado,
   onClienteEncontrado,
   onNovoCliente,
   onTrocarProprietario,
@@ -204,6 +206,24 @@ export default function ModalBuscaClienteVeiculo({
       setTipoBusca('cliente');
     }
   }, [isOpen]);
+
+  // Quando vier de um cadastro de cliente, abrir direto na etapa de decisão de veículo.
+  useEffect(() => {
+    if (!isOpen || !clientePreSelecionado) return;
+
+    setTipoBusca('cliente');
+    setErro('');
+    setResultadoVeiculo(null);
+    setMostrarConfirmacao(false);
+    setResultadoCliente({
+      encontrado: true,
+      cliente: {
+        ...clientePreSelecionado,
+        veiculos: clientePreSelecionado.veiculos || []
+      },
+      message: ''
+    } as ClienteBuscaResponse);
+  }, [isOpen, clientePreSelecionado]);
 
 
 

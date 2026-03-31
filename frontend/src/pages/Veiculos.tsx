@@ -88,6 +88,14 @@ interface VeiculosPaginadoResponse {
   total_pages: number
 }
 
+interface ClientesDropdownPaginadoResponse {
+  items: Array<{ id: number; nome: string }>
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 // Hook para buscar veículos
 function useVeiculos(params: {
   page: number
@@ -120,11 +128,36 @@ function useVeiculos(params: {
   })
 }
 
-// Hook para buscar clientes (para dropdown)
-function useClientes() {
+// Hook para buscar clientes (dropdown com paginação server-side)
+function useClientesDropdown(params: {
+  page: number
+  pageSize: number
+  search?: string
+  enabled?: boolean
+}) {
   return useQuery({
-    queryKey: ['clientes-dropdown'],
-    queryFn: async () => await apiFetch('/clientes')
+    queryKey: ['clientes-dropdown', 'paginado', params.page, params.pageSize, params.search || ''],
+    queryFn: async (): Promise<ClientesDropdownPaginadoResponse> => {
+      const searchParams = new URLSearchParams()
+      searchParams.set('page', String(params.page))
+      searchParams.set('page_size', String(params.pageSize))
+      if (params.search && params.search.trim()) {
+        searchParams.set('search', params.search.trim())
+      }
+
+      const res = await apiFetch(`/clientes/paginado?${searchParams.toString()}`)
+      const payload = res as any
+      return {
+        items: Array.isArray(payload?.items)
+          ? payload.items.map((cliente: any) => ({ id: cliente.id, nome: cliente.nome }))
+          : [],
+        total: typeof payload?.total === 'number' ? payload.total : 0,
+        page: typeof payload?.page === 'number' ? payload.page : params.page,
+        page_size: typeof payload?.page_size === 'number' ? payload.page_size : params.pageSize,
+        total_pages: typeof payload?.total_pages === 'number' ? payload.total_pages : 1
+      }
+    },
+    enabled: params.enabled ?? true
   })
 }
 
@@ -170,7 +203,24 @@ function VeiculoModal({
   clienteIdPreSelecionado?: number
   clienteNomePreSelecionado?: string
 }) {
-  const { data: clientes = [] } = useClientes()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [clientesCurrentPage, setClientesCurrentPage] = useState(1)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const clientesPageSize = 20
+
+  const {
+    data: clientesPaginado,
+    isLoading: isLoadingClientes
+  } = useClientesDropdown({
+    page: clientesCurrentPage,
+    pageSize: clientesPageSize,
+    search: debouncedSearchTerm,
+    enabled: isOpen && isDropdownOpen
+  })
+
+  const clientes = clientesPaginado?.items || []
+  const clientesTotalPages = Math.max(1, clientesPaginado?.total_pages || 1)
   
   const [formData, setFormData] = useState<VeiculoFormData>({
     placa: '',
@@ -188,10 +238,20 @@ function VeiculoModal({
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
   const dropdownRef = React.useRef<HTMLDivElement>(null)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 350)
+
+    return () => window.clearTimeout(timer)
+  }, [searchTerm])
+
+  useEffect(() => {
+    setClientesCurrentPage(1)
+  }, [debouncedSearchTerm])
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -346,7 +406,7 @@ function VeiculoModal({
                 <span className={formData.cliente_id === 0 ? 'text-gray-500' : 'text-gray-900'}>
                   {formData.cliente_id === 0 
                     ? 'Selecione um cliente' 
-                    : clientes.find((c: any) => c.id === formData.cliente_id)?.nome || clienteNomePreSelecionado || 'Selecione um cliente'
+                    : clientes.find((c: any) => c.id === formData.cliente_id)?.nome || clienteNomePreSelecionado || veiculo?.cliente_nome || 'Selecione um cliente'
                   }
                 </span>
                 <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${isDropdownOpen ? 'transform rotate-180' : ''}`} />
@@ -384,12 +444,12 @@ function VeiculoModal({
                         Selecione um cliente
                       </div>
                     )}
-                    {[...clientes]
-                      .sort((a: any, b: any) => a.nome.localeCompare(b.nome))
-                      .filter((cliente: any) => 
-                        cliente.nome.toLowerCase().includes(searchTerm.toLowerCase())
-                      )
-                      .map((cliente: any) => (
+                    {isLoadingClientes && (
+                      <div className="px-3 py-2 text-gray-500 text-center">
+                        Carregando clientes...
+                      </div>
+                    )}
+                    {!isLoadingClientes && clientes.map((cliente: any) => (
                         <div
                           key={cliente.id}
                           onClick={() => {
@@ -406,16 +466,33 @@ function VeiculoModal({
                         >
                           {cliente.nome}
                         </div>
-                      ))
-                    }
-                    {[...clientes]
-                      .filter((cliente: any) => 
-                        cliente.nome.toLowerCase().includes(searchTerm.toLowerCase())
-                      ).length === 0 && searchTerm && (
+                      ))}
+                    {!isLoadingClientes && clientes.length === 0 && (
                         <div className="px-3 py-2 text-gray-500 text-center">
                           Nenhum cliente encontrado
                         </div>
                       )}
+                  </div>
+                  <div className="border-t border-gray-200 px-3 py-2 bg-white flex items-center justify-between text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setClientesCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={clientesCurrentPage <= 1 || isLoadingClientes}
+                      className="text-blue-600 disabled:text-gray-400"
+                    >
+                      Anterior
+                    </button>
+                    <span className="text-gray-600">
+                      Página {clientesCurrentPage} de {clientesTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setClientesCurrentPage((prev) => Math.min(clientesTotalPages, prev + 1))}
+                      disabled={clientesCurrentPage >= clientesTotalPages || isLoadingClientes}
+                      className="text-blue-600 disabled:text-gray-400"
+                    >
+                      Próxima
+                    </button>
                   </div>
                   {/* Opção fixa no rodapé */}
                   <div className="border-t border-gray-200 bg-gray-50">

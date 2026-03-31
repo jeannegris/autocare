@@ -200,9 +200,9 @@ export default function ModalCadastroVeiculo({
         body: JSON.stringify(payload)
       });
 
-  // Notificar sucesso e fechar o modal de cadastro (o pai mantém a OS aberta)
-  onSuccess(novoVeiculo);
-  onClose();
+      // Fechar primeiro para evitar qualquer condição de corrida visual entre modais.
+      onClose();
+      onSuccess(novoVeiculo);
     } catch (error: any) {
       setErro(error.message || 'Erro ao cadastrar veículo');
     } finally {
@@ -225,9 +225,9 @@ export default function ModalCadastroVeiculo({
         body: JSON.stringify({ novo_cliente_id: clienteId })
       });
 
-  // Notificar sucesso e fechar este modal
-  onSuccess(response.veiculo);
-  onClose();
+      // Fechar primeiro para evitar qualquer condição de corrida visual entre modais.
+      onClose();
+      onSuccess(response.veiculo);
     } catch (error: any) {
       setErro(error.message || 'Erro ao transferir veículo');
     } finally {
@@ -304,14 +304,14 @@ export default function ModalCadastroVeiculo({
 
               <div className="space-y-2">
                 {veiculoExistente.cliente?.id === clienteId ? (
-                  // Veículo já pertence ao cliente - oferecer criar ordem diretamente
+                  // Veiculo ja pertence ao cliente - oferecer criar ordem diretamente
                   <>
                     <button
                       type="button"
                       onClick={() => {
                         // Usar o veículo existente para criar a ordem
                         onSuccess(veiculoExistente.veiculo || veiculoExistente);
-                        // NÃO chamar onClose() aqui - deixar o componente pai gerenciar
+                        onClose();
                       }}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
                     >
@@ -331,7 +331,7 @@ export default function ModalCadastroVeiculo({
                     </button>
                   </>
                 ) : (
-                  // Veículo pertence a outro cliente - oferecer transferir
+                  // Veiculo pertence a outro cliente - oferecer transferir
                   <>
                     <button
                       type="button"
@@ -359,7 +359,7 @@ export default function ModalCadastroVeiculo({
             </div>
           )}
 
-          {/* Só mostrar campos se não encontrou veículo OU se veículo pertence a outro cliente */}
+          {/* So mostrar campos se nao encontrou veiculo OU se veiculo pertence a outro cliente */}
           {(!placaExiste || (veiculoExistente && veiculoExistente.cliente?.id !== clienteId)) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Placa */}
@@ -476,7 +476,7 @@ export default function ModalCadastroVeiculo({
               />
             </div>
 
-            {/* Combustível */}
+            {/* Combustivel */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Combustível
@@ -543,7 +543,7 @@ export default function ModalCadastroVeiculo({
           </div>
           )}
 
-          {/* Footer - só mostrar se não encontrou veículo OU se veículo pertence a outro cliente */}
+          {/* Footer - so mostrar se nao encontrou veiculo OU se veiculo pertence a outro cliente */}
           {(!placaExiste || (veiculoExistente && veiculoExistente.cliente?.id !== clienteId)) && (
             <div className="flex justify-end gap-3 pt-6 border-t">
             <button

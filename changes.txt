@@ -1,15 +1,6 @@
- M backend/routes/autocare_clientes.py
- M backend/routes/autocare_dashboard.py
- M backend/routes/autocare_fornecedores.py
- M backend/routes/autocare_relatorios.py
- M backend/routes/autocare_veiculos.py
- M backend/server.py
  M backup_log.txt
  M changes.txt
  M frontend/src/components/ModalBuscaClienteVeiculo.tsx
- M frontend/src/components/ModalVisualizarOrdem.tsx
- M frontend/src/pages/Clientes.tsx
- M frontend/src/pages/Dashboard.tsx
- M frontend/src/pages/Fornecedores.tsx
+ M frontend/src/components/ModalCadastroVeiculo.tsx
+ M frontend/src/pages/OrdensServico.tsx
  M frontend/src/pages/Veiculos.tsx
-?? frontend/src/components/ModalVisualizarCliente.tsx

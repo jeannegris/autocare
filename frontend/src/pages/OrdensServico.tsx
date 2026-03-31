@@ -183,6 +183,7 @@ export default function OrdensServicoNova() {
   const [modalVisualizar, setModalVisualizar] = useState(false);
   const [modalEditar, setModalEditar] = useState(false);
   const [clienteSelecionado, setClienteSelecionado] = useState<ClienteBuscaResponse['cliente'] | null>(null);
+  const [clientePreSelecionadoBusca, setClientePreSelecionadoBusca] = useState<ClienteBuscaResponse['cliente'] | null>(null);
   const [veiculoSelecionado, setVeiculoSelecionado] = useState<VeiculoBuscaResponse['veiculo'] | null>(null);
   const [modalCadastroVeiculo, setModalCadastroVeiculo] = useState(false);
   const [placaPreenchidaParaVeiculo, setPlacaPreenchidaParaVeiculo] = useState<string>('');
@@ -376,10 +377,13 @@ export default function OrdensServicoNova() {
   };
 
   const handleNovaOrdem = () => {
+    setClientePreSelecionadoBusca(null);
     setModalBusca(true);
   };
 
   const handleClienteEncontrado = (cliente: ClienteBuscaResponse['cliente'], veiculoPreSelecionado?: VeiculoBuscaResponse['veiculo']) => {
+    setModalBusca(false);
+    setClientePreSelecionadoBusca(null);
     setClienteSelecionado(cliente);
     // Se um veículo foi pré-selecionado (busca por placa), defini-lo
     if (veiculoPreSelecionado) {
@@ -392,6 +396,7 @@ export default function OrdensServicoNova() {
   // busca; armazena em estado e abre o modal de cadastro apenas após o termo
   // ser aplicado, evitando que o modal monte com prop vazia.
   const handleNovoCliente = (termoBusca = '') => {
+    // Mantém modalBusca aberto, apenas abre modalCadastro por cima
     // Passa termo diretamente via estado (sem usar localStorage) e abre modal no mesmo ciclo
     if (termoBusca && termoBusca.trim()) {
       setTermoBuscaAtual(termoBusca.trim());
@@ -410,6 +415,8 @@ export default function OrdensServicoNova() {
   useEffect(() => {}, [termoBuscaAtual]);
 
   const handleTrocarProprietario = (veiculo: VeiculoBuscaResponse['veiculo'], termo?: string) => {
+    setModalBusca(false);
+    setClientePreSelecionadoBusca(null);
     setVeiculoSelecionado(veiculo);
     // Se houve um termo (CPF/CNPJ/telefone) passado, usá-lo para pré-preencher
     if (termo && termo.trim()) {
@@ -426,6 +433,8 @@ export default function OrdensServicoNova() {
   const handleCadastrarVeiculoParaCliente = (cliente: ClienteBuscaResponse['cliente'], veiculo?: any) => {
     
     // selecionar cliente e abrir modal de cadastro de veículo com placa preenchida
+    setModalBusca(false);
+    setClientePreSelecionadoBusca(null);
     setClienteSelecionado(cliente);
     setVeiculoSelecionado(veiculo || null);
     setModalCadastro(false);
@@ -466,11 +475,19 @@ export default function OrdensServicoNova() {
       return;
     }
 
-    // Caso contrário, abrir a criação de ordem normalmente
-    setModalOrdem(true);
+    // Caso contrário, fechar o modal de cadastro e reabrir o ModalBuscaClienteVeiculo
+    // para que o usuário possa buscar/cadastrar um veículo ou prosseguir sem veículo
+    setModalCadastro(false);
+    setClientePreSelecionadoBusca(cliente);
+    setModalBusca(true);
+    setVeiculoSelecionado(null);
+    setTermoBuscaAtual('');
   };
 
   const handleVeiculoCadastradoFromCadastro = (veiculo: any) => {
+    // Fechar imediatamente o modal de veículo para evitar sobreposição visual.
+    setModalCadastroVeiculo(false);
+
     // Atualizar cliente selecionado com o novo veículo
     setClienteSelecionado(prev => {
       if (!prev) return prev;
@@ -483,12 +500,18 @@ export default function OrdensServicoNova() {
       };
     });
 
-    setModalCadastroVeiculo(false);
-    // Após cadastrar veículo, abrir modal de ordem
-    setModalOrdem(true);
+    // Definir o veículo criado como selecionado
+    setVeiculoSelecionado(veiculo);
+
+    // Usar setTimeout para garantir que o modal de cadastro fecha antes de abrir a ordem
+    setTimeout(() => {
+      setModalOrdem(true);
+    }, 100);
   };
 
   const handleOrdemCriada = () => {
+    setModalBusca(false);
+    setClientePreSelecionadoBusca(null);
     refetch();
     setClienteSelecionado(null);
   };
@@ -1188,7 +1211,11 @@ export default function OrdensServicoNova() {
       {/* Modals */}
       <ModalBuscaClienteVeiculo
         isOpen={modalBusca}
-        onClose={() => setModalBusca(false)}
+        onClose={() => {
+          setModalBusca(false);
+          setClientePreSelecionadoBusca(null);
+        }}
+        clientePreSelecionado={clientePreSelecionadoBusca}
         onClienteEncontrado={handleClienteEncontrado}
         onNovoCliente={handleNovoCliente}
         onTrocarProprietario={handleTrocarProprietario}
@@ -1210,7 +1237,11 @@ export default function OrdensServicoNova() {
       {/* Modal de cadastro de veículo que pode ser disparado após cadastrar cliente */}
       <ModalCadastroVeiculo
         isOpen={modalCadastroVeiculo}
-        onClose={() => setModalCadastroVeiculo(false)}
+        onClose={() => {
+          setModalCadastroVeiculo(false);
+          // Ao cancelar, voltar para o modal de busca
+          setModalBusca(true);
+        }}
         clienteId={clienteSelecionado?.id || 0}
         onSuccess={handleVeiculoCadastradoFromCadastro}
         placaPreenchida={placaPreenchidaParaVeiculo}
