@@ -53,6 +53,7 @@ const GerenciarPerfis: React.FC = () => {
   const [perfis, setPerfis] = useState<Perfil[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingPerfil, setEditingPerfil] = useState<Perfil | null>(null);
@@ -92,6 +93,11 @@ const GerenciarPerfis: React.FC = () => {
       const response = await fetch(`${API_BASE}/perfis/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
+      if (response.status === 401) {
+        setSessionExpired(true);
+        return;
+      }
 
       if (response.status === 404) {
         // Backend ainda não publicou a rota; mostrar perfis padrão apenas para consulta
@@ -263,6 +269,29 @@ const GerenciarPerfis: React.FC = () => {
   const contarPermissoes = (permissoes: Permissoes): number => {
     return Object.values(permissoes).filter(v => v).length;
   };
+
+  if (sessionExpired) {
+    return (
+      <div className="container px-4 py-8 mx-auto">
+        <Toaster position="top-right" richColors />
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100">
+            <AlertTriangle size={32} className="text-yellow-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800">Sessão expirada</h2>
+          <p className="text-gray-600 text-center max-w-md">
+            Sua sessão expirou. Faça um novo login para visualizar e gerenciar os perfis de acesso.
+          </p>
+          <a
+            href="/login"
+            className="px-6 py-2 mt-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Ir para o Login
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container px-4 py-8 mx-auto">
