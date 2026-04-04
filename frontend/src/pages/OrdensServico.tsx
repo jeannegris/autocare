@@ -1,5 +1,4 @@
 ﻿import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import ReactDOM from 'react-dom';
 import { 
   Plus, 
@@ -25,7 +24,6 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { apiFetch } from '../lib/api';
 import { OrdemServicoList, OrdemServicoNova, ClienteBuscaResponse, VeiculoBuscaResponse } from '../types/ordem-servico';
 import { formatPlaca } from '../utils/placaMask';
 import { 
@@ -322,40 +320,17 @@ export default function OrdensServicoNova() {
   // Query para estatísticas
   const { data: estatisticas } = useEstatisticasOrdens();
 
-  const { data: resumoDashboard } = useQuery({
-    queryKey: ['dashboard-resumo-financeiro-os'],
-    queryFn: async () => await apiFetch('/dashboard/resumo'),
-    staleTime: 1000 * 60,
-  });
-
-  const hoje = new Date();
-  const ordensConcluidasMesAtual = ordensOrdenadas.filter((ordem: OrdemServicoList) => {
-    if (normalizeStatusValue(ordem.status) !== 'CONCLUIDA' || !ordem.data_conclusao) {
-      return false;
-    }
-
-    const dataConclusao = new Date(ordem.data_conclusao);
-    if (Number.isNaN(dataConclusao.getTime())) {
-      return false;
-    }
-
-    return dataConclusao.getMonth() === hoje.getMonth() && dataConclusao.getFullYear() === hoje.getFullYear();
-  });
-
-  const totalValorCobradoCarregado = ordensConcluidasMesAtual.reduce((sum: number, ordem: OrdemServicoList) => {
+  const totalValorCobradoExibido = ordensOrdenadas.reduce((sum: number, ordem: OrdemServicoList) => {
     const valorServico = parseFloat(String(ordem.valor_servico || 0));
     const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
     const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
     return sum + valorServico + valorPecas - valorDesconto;
   }, 0);
 
-  const totalValorFaturadoCarregado = ordensConcluidasMesAtual.reduce((sum: number, ordem: OrdemServicoList) => {
+  const totalValorFaturadoExibido = ordensOrdenadas.reduce((sum: number, ordem: OrdemServicoList) => {
     const valorFaturado = parseFloat(String(ordem.valor_faturado || 0));
     return sum + valorFaturado;
   }, 0);
-
-  const totalValorCobradoExibido = resumoDashboard?.financeiro?.faturamento_mes ?? totalValorCobradoCarregado;
-  const totalValorFaturadoExibido = resumoDashboard?.financeiro?.receita_liquida ?? totalValorFaturadoCarregado;
 
   // Estatísticas das ordens (fallback se API de estatísticas falhar)
   const stats = estatisticas || {
