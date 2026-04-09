@@ -1155,8 +1155,6 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
         # Remover campos que são properties somente leitura
         ordem_dict.pop('tempo_estimado_horas', None)
         ordem_dict.pop('tempo_gasto_horas', None)
-        ordem_dict.pop('percentual_desconto', None)
-        ordem_dict.pop('tipo_desconto', None)
         ordem_dict.pop('valor_subtotal', None)
         ordem = OrdemServico(**ordem_dict, numero=numero)
         

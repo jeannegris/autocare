@@ -568,10 +568,47 @@ export default function OrdensServicoNova() {
     return `R$ ${parseFloat(String(valor || 0)).toFixed(2).replace('.', ',')}`;
   };
 
-  const calcularValorCliente = (ordem: OrdemServicoList) => {
+  const obterDescontoAplicado = (ordem: OrdemServicoList) => {
+    const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
+    if (valorDesconto > 0) {
+      return valorDesconto;
+    }
+
     const valorServico = parseFloat(String(ordem.valor_servico || 0));
     const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
-    const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
+    const valorTotal = parseFloat(String(ordem.valor_total || 0));
+    const descontoDerivado = valorServico + valorPecas - valorTotal;
+
+    return descontoDerivado > 0.009 ? descontoDerivado : 0;
+  };
+
+  const obterPercentualDesconto = (ordem: OrdemServicoList) => {
+    const percentualBruto = parseFloat(String((ordem as any).percentual_desconto || 0));
+    if (percentualBruto > 0) {
+      return percentualBruto;
+    }
+
+    const valorServico = parseFloat(String(ordem.valor_servico || 0));
+    const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
+    const baseCalculo = valorServico + valorPecas;
+    const valorDesconto = obterDescontoAplicado(ordem);
+
+    if (baseCalculo <= 0 || valorDesconto <= 0) {
+      return 0;
+    }
+
+    return (valorDesconto / baseCalculo) * 100;
+  };
+
+  const calcularValorCliente = (ordem: OrdemServicoList) => {
+    const valorTotal = parseFloat(String(ordem.valor_total || 0));
+    if (valorTotal > 0) {
+      return valorTotal;
+    }
+
+    const valorServico = parseFloat(String(ordem.valor_servico || 0));
+    const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
+    const valorDesconto = obterDescontoAplicado(ordem);
     return valorServico + valorPecas - valorDesconto;
   };
 
@@ -1106,13 +1143,7 @@ export default function OrdensServicoNova() {
                     
                     <td className="px-6 py-4 text-center">
                       <div className="text-sm font-medium text-blue-600">
-                        R$ {(() => {
-                          const valorServico = parseFloat(String(ordem.valor_servico || 0));
-                          const valorPecas = parseFloat(String(ordem.valor_pecas || 0));
-                          const valorDesconto = parseFloat(String(ordem.valor_desconto || 0));
-                          const valorCobrado = valorServico + valorPecas - valorDesconto;
-                          return valorCobrado.toFixed(2).replace('.', ',');
-                        })()}
+                        {formatarMoeda(calcularValorCliente(ordem))}
                       </div>
                     </td>
 
@@ -1174,6 +1205,12 @@ export default function OrdensServicoNova() {
         >
           <div className="mb-1 font-semibold">Detalhamento do Valor Faturado:</div>
           <div>Valor Cliente: {formatarMoeda(calcularValorCliente(tooltipValorFaturado.ordem))}</div>
+          {obterDescontoAplicado(tooltipValorFaturado.ordem) > 0 && (
+            <div>
+              Desconto: -{formatarMoeda(obterDescontoAplicado(tooltipValorFaturado.ordem))}
+              {` (${obterPercentualDesconto(tooltipValorFaturado.ordem).toFixed(2).replace('.', ',')}%)`}
+            </div>
+          )}
           <div>Custo Peças: -{formatarMoeda(tooltipValorFaturado.ordem.valor_custo_pecas)}</div>
           <div>Mão de Obra Avulsa: -{formatarMoeda(tooltipValorFaturado.ordem.valor_mao_obra_avulso)}</div>
           <div>Forma de Pgto.: {formatarFormaPagamento(tooltipValorFaturado.ordem.forma_pagamento)}</div>

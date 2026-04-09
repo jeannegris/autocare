@@ -78,8 +78,10 @@ export default function ModalNovaOrdem({
     const clienteParaProcessar = clienteAtualizado || cliente;
     
     if (clienteParaProcessar) {
+      const temVeiculos = Array.isArray(clienteParaProcessar.veiculos) && clienteParaProcessar.veiculos.length > 0;
+
       // Verificar se cliente precisa cadastrar novo veículo
-      if ((clienteParaProcessar as any).precisaCadastrarVeiculo) {
+      if ((clienteParaProcessar as any).precisaCadastrarVeiculo && !temVeiculos) {
         setModalCadastroVeiculo(true);
         return;
       }
@@ -358,7 +360,8 @@ export default function ModalNovaOrdem({
     if (cliente) {
       const novoCliente = {
         ...cliente,
-        veiculos: [...(cliente.veiculos || []), veiculo]
+        veiculos: [...(cliente.veiculos || []), veiculo],
+        precisaCadastrarVeiculo: false
       };
       setClienteAtualizado(novoCliente);
       
@@ -453,6 +456,24 @@ export default function ModalNovaOrdem({
     setErro('');
 
     try {
+      const formElement = e.currentTarget as HTMLFormElement;
+      const formValues = new FormData(formElement);
+
+      const percentualDescontoForm = Number(
+        formValues.get('percentual_desconto') ?? formData.percentual_desconto ?? 0
+      );
+      const percentualDescontoPayload = Number.isFinite(percentualDescontoForm)
+        ? parseFloat(percentualDescontoForm.toFixed(2))
+        : 0;
+
+      const tipoDescontoForm = String(
+        formValues.get('tipo_desconto') ?? formData.tipo_desconto ?? 'TOTAL'
+      ).toUpperCase();
+      const tipoDescontoPayload =
+        tipoDescontoForm === 'VENDA' || tipoDescontoForm === 'SERVICO' || tipoDescontoForm === 'TOTAL'
+          ? (tipoDescontoForm as 'VENDA' | 'SERVICO' | 'TOTAL')
+          : 'TOTAL';
+
       // Validações
       if (formData.tipo_ordem !== 'VENDA' && !formData.descricao_servico) {
         throw new Error('Descrição do serviço é obrigatória');
@@ -482,7 +503,8 @@ export default function ModalNovaOrdem({
         tempo_estimado_horas: Number(formData.tempo_estimado_horas || 0),
         valor_servico: parseFormattedValue(formData.valor_servico),
         valor_mao_obra_avulso: parseFormattedValue(formData.valor_mao_obra_avulso) || 0,
-        percentual_desconto: Number(formData.percentual_desconto || 0),
+        percentual_desconto: percentualDescontoPayload,
+        tipo_desconto: tipoDescontoPayload,
         itens: formData.itens.map(item => ({
           ...item,
           produto_id: (item as any).produto_id ?? null,
@@ -956,6 +978,7 @@ export default function ModalNovaOrdem({
               </label>
               <input
                 type="number"
+                name="percentual_desconto"
                 step="0.01"
                 min="0"
                 max="100"
@@ -977,6 +1000,7 @@ export default function ModalNovaOrdem({
                 Aplicar Desconto Em
               </label>
               <select
+                name="tipo_desconto"
                 value={descontoConfig.value}
                 onChange={(e) => handleInputChange('tipo_desconto', e.target.value)}
                 disabled={descontoConfig.disabled}

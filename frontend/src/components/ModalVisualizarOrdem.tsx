@@ -158,6 +158,11 @@ export default function ModalVisualizarOrdem({
     return 'Não informado';
   })();
 
+  const linhasDescricaoServico = (ordem.descricao_servico || '')
+    .split(/\r?\n/)
+    .map((linha) => linha.trim())
+    .filter(Boolean);
+
   return (
     <>
       <ModalCancelamento
@@ -326,7 +331,13 @@ export default function ModalVisualizarOrdem({
             </thead>
             <tbody>
               <tr>
-                <td>{ordem.descricao_servico || 'Não informado'}</td>
+                <td>
+                  {linhasDescricaoServico.length > 0
+                    ? linhasDescricaoServico.map((linha, index) => (
+                        <div key={`${index}-${linha}`}>{linha}</div>
+                      ))
+                    : 'Não informado'}
+                </td>
                 {ordem.observacoes && <td>{ordem.observacoes}</td>}
               </tr>
             </tbody>
@@ -484,7 +495,11 @@ export default function ModalVisualizarOrdem({
                 <div className="space-y-3">
                   <div>
                     <span className="text-sm text-gray-600">Descrição:</span>
-                    <p className="text-sm text-gray-900 mt-1">{ordem.descricao_servico}</p>
+                    <div className="text-sm text-gray-900 mt-1 space-y-1">
+                      {linhasDescricaoServico.map((linha, index) => (
+                        <div key={`${index}-${linha}`}>{linha}</div>
+                      ))}
+                    </div>
                   </div>
                   
                   <div>

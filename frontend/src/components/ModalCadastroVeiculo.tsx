@@ -225,9 +225,18 @@ export default function ModalCadastroVeiculo({
         body: JSON.stringify({ novo_cliente_id: clienteId })
       });
 
+      // O backend pode retornar somente `veiculo_id`; nesse caso, reaproveita os dados
+      // do veículo já carregado no modal para manter o fluxo da OS sem quebrar.
+      const baseVeiculo = veiculoExistente.veiculo || veiculoExistente || {};
+      const veiculoTransferido = response?.veiculo || {
+        ...baseVeiculo,
+        id: response?.veiculo_id || baseVeiculo?.id || veiculoId,
+        cliente_id: clienteId
+      };
+
       // Fechar primeiro para evitar qualquer condição de corrida visual entre modais.
       onClose();
-      onSuccess(response.veiculo);
+      onSuccess(veiculoTransferido);
     } catch (error: any) {
       setErro(error.message || 'Erro ao transferir veículo');
     } finally {
