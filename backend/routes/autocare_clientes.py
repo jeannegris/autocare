@@ -49,7 +49,14 @@ def listar_clientes(
     else:
         query = query.filter(Cliente.ativo == ativo)
     
-    clientes = query.offset(skip).limit(limit).all()
+    query_paginada = query.offset(skip)
+
+    # Quando houver busca textual, não restringir aos 100 primeiros para
+    # permitir encontrar clientes antigos fora da janela padrão.
+    if search and search.strip():
+        clientes = query_paginada.all()
+    else:
+        clientes = query_paginada.limit(limit).all()
     
     # Calcular estatísticas para cada cliente
     # Evitar qualquer cache intermediário (CDN/Nginx/navegador)

@@ -26,7 +26,7 @@ const navigation = [
   { name: 'Clientes', href: '/clientes', icon: Users, permission: 'clientes' },
   { name: 'Veículos', href: '/veiculos', icon: Car, permission: 'veiculos' },
   { name: 'Estoque', href: '/estoque', icon: Package, permission: 'estoque' },
-  { name: 'Ordens de Serviço', href: '/ordens-servico', icon: Wrench, permission: 'ordens_servico' },
+  { name: 'Ordens de Serviço', href: '/ordens-servico', icon: Wrench, permission: 'ordens_servico', permissionAlt: 'ordens_servico_operacional' },
   { name: 'Fornecedores', href: '/fornecedores', icon: Truck, permission: 'fornecedores' },
   { name: 'Relatórios', href: '/relatorios', icon: FileText, permission: 'relatorios' },
   { name: 'Usuários', href: '/usuarios', icon: User, permission: 'usuarios' },

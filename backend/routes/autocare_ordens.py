@@ -737,6 +737,7 @@ def buscar_lotes_disponiveis_produto(
 def listar_ordens_servico(
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = None,
     cliente_id: Optional[int] = None,
     veiculo_id: Optional[int] = None,
     tipo_ordem: Optional[str] = None,
@@ -759,6 +760,20 @@ def listar_ordens_servico(
     
     if tipo_ordem:
         query = query.filter(OrdemServico.tipo_ordem == tipo_ordem)
+
+    if search and search.strip():
+        termo_busca = search.strip()
+        termo_numero = termo_busca.lstrip("#").strip()
+        termo_numero_like = f"%{termo_numero}%" if termo_numero else f"%{termo_busca}%"
+        termo_like = f"%{termo_busca}%"
+
+        query = query.filter(
+            or_(
+                OrdemServico.numero.ilike(termo_numero_like),
+                OrdemServico.cliente.has(Cliente.nome.ilike(termo_like)),
+                OrdemServico.veiculo.has(Veiculo.placa.ilike(termo_like)),
+            )
+        )
     
     if status:
         status_normalizado = normalizar_status_ordem(status)
@@ -786,7 +801,14 @@ def listar_ordens_servico(
         except ValueError:
             pass
     
-    ordens = query.order_by(OrdemServico.data_abertura.desc()).offset(skip).limit(limit).all()
+    query_ordenada = query.order_by(OrdemServico.data_abertura.desc()).offset(skip)
+
+    # Quando houver busca textual, retornamos todos os resultados filtrados para
+    # permitir encontrar OS antigas sem ficar restrito aos últimos 100 registros.
+    if search and search.strip():
+        ordens = query_ordenada.all()
+    else:
+        ordens = query_ordenada.limit(limit).all()
     
     # Enriquecer com dados do cliente e veículo
     result = []

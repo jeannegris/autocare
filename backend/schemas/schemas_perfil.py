@@ -11,6 +11,7 @@ class Permissoes(BaseModel):
     veiculos: bool = False
     estoque: bool = False
     ordens_servico: bool = False
+    ordens_servico_operacional: bool = False
     fornecedores: bool = False
     relatorios: bool = False
     configuracoes: bool = False

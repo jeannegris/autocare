@@ -55,6 +55,7 @@ export async function criarOrdem(ordem: OrdemServicoNova): Promise<OrdemServicoN
 }
 
 export async function listarOrdens(params?: {
+  search?: string
   status?: string
   cliente_id?: number
   veiculo_id?: number
@@ -64,6 +65,7 @@ export async function listarOrdens(params?: {
 }): Promise<OrdemServicoList[]> {
   const searchParams = new URLSearchParams()
   
+  if (params?.search) searchParams.set('search', params.search)
   if (params?.status) searchParams.set('status', params.status)
   if (params?.cliente_id) searchParams.set('cliente_id', params.cliente_id.toString())
   if (params?.veiculo_id) searchParams.set('veiculo_id', params.veiculo_id.toString())

@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Plus, 
   Search, 
@@ -136,6 +137,7 @@ const formatarFormaPagamento = (formaPagamento?: string | null) => {
 };
 
 export default function OrdensServicoNova() {
+  const { hasPermission } = useAuth();
   const [tooltipValorFaturado, setTooltipValorFaturado] = useState<{
     ordem: OrdemServicoList;
     left: number;
@@ -248,6 +250,7 @@ export default function OrdensServicoNova() {
 
   // Query para buscar ordens de serviço
   const { data: ordens = [], isLoading, refetch } = useListarOrdens({
+    search: filtros.search || undefined,
     status: filtros.status || undefined,
     data_inicio: filtros.data_inicio || undefined,
     data_fim: filtros.data_fim || undefined
@@ -261,19 +264,8 @@ export default function OrdensServicoNova() {
   const atualizarOrdemMutation = useAtualizarOrdem();
   const atualizarStatusMutation = useAtualizarStatusOrdem();
 
-  // Filtro de busca local por texto
-  const ordensFiltradasPorTexto = ordens.filter(ordem => {
-    if (!filtros.search) return true;
-    const searchLower = filtros.search.toLowerCase();
-    return (
-      ordem.numero?.toLowerCase().includes(searchLower) ||
-      ordem.cliente_nome?.toLowerCase().includes(searchLower) ||
-      ordem.veiculo_placa?.toLowerCase().includes(searchLower)
-    );
-  });
-
   // Aplicar ordenação
-  const ordensOrdenadas = [...ordensFiltradasPorTexto].sort((a, b) => {
+  const ordensOrdenadas = [...ordens].sort((a, b) => {
     if (!ordenacao.coluna) return 0;
 
     let valorA: any;
@@ -698,6 +690,7 @@ export default function OrdensServicoNova() {
           </div>
         </div>
 
+        {hasPermission('ordens_servico') && (
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 relative">
           <button
             onClick={() => setMostrarValores(!mostrarValores)}
@@ -740,6 +733,7 @@ export default function OrdensServicoNova() {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Filtros */}

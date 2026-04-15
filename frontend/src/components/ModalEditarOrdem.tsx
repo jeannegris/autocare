@@ -378,7 +378,6 @@ export default function ModalEditarOrdem({
                 value={formData.data_ordem}
                 onChange={(e) => handleChange('data_ordem', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                min={new Date().toISOString().split('T')[0]}
               />
             </div>
           </div>
@@ -479,9 +478,22 @@ export default function ModalEditarOrdem({
                             <label className="block mb-1 text-xs font-medium text-gray-600">
                               Valor Unit.
                             </label>
-                            <div className="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50">
-                              R$ {Number(item.valor_unitario ?? 0).toFixed(2).replace('.', ',')}
-                            </div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={item.valor_unitario}
+                              onChange={(e) => {
+                                const valor = parseFloat(e.target.value) || 0;
+                                handleUpdateItem(index, 'valor_unitario', valor);
+                              }}
+                              onBlur={(e) => {
+                                const valor = parseFloat(e.target.value) || 0;
+                                handleUpdateItem(index, 'valor_unitario', parseFloat(valor.toFixed(2)));
+                              }}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                              min="0"
+                              placeholder="0,00"
+                            />
                           </div>
                           
                           <div>

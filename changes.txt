@@ -1,7 +1,11 @@
+ M backend/routes/autocare_clientes.py
  M backend/routes/autocare_ordens.py
+ M backend/routes/autocare_veiculos.py
+ M backend/schemas/schemas_perfil.py
  M backup_log.txt
  M changes.txt
- M frontend/src/components/ModalCadastroVeiculo.tsx
- M frontend/src/components/ModalNovaOrdem.tsx
- M frontend/src/components/ModalVisualizarOrdem.tsx
+ M frontend/src/components/Layout.tsx
+ M frontend/src/components/ModalEditarOrdem.tsx
+ M frontend/src/pages/GerenciarPerfis.tsx
  M frontend/src/pages/OrdensServico.tsx
+ M frontend/src/services/ordem-service.ts

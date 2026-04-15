@@ -11,6 +11,7 @@ interface Permissoes {
   veiculos: boolean;
   estoque: boolean;
   ordens_servico: boolean;
+  ordens_servico_operacional: boolean;
   fornecedores: boolean;
   relatorios: boolean;
   configuracoes: boolean;
@@ -41,7 +42,8 @@ const permissoesLabels: Record<keyof Permissoes, string> = {
   clientes: 'Clientes',
   veiculos: 'Veículos',
   estoque: 'Estoque',
-  ordens_servico: 'Ordens de Serviço',
+  ordens_servico: 'Ordem de Serviço Gerencial',
+  ordens_servico_operacional: 'Ordem de Serviço Operacional',
   fornecedores: 'Fornecedores',
   relatorios: 'Relatórios',
   configuracoes: 'Configurações',
@@ -67,6 +69,7 @@ const GerenciarPerfis: React.FC = () => {
       veiculos: false,
       estoque: false,
       ordens_servico: false,
+      ordens_servico_operacional: false,
       fornecedores: false,
       relatorios: false,
       configuracoes: false,
@@ -104,13 +107,13 @@ const GerenciarPerfis: React.FC = () => {
         setUsingFallback(true);
         setPerfis([
           { id: 1, nome: 'Administrador', descricao: 'Acesso total ao sistema', ativo: true, editavel: false, created_at: new Date().toISOString(), permissoes: {
-            dashboard_gerencial: true, dashboard_operacional: true, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: true, usuarios: true, perfis: true
+            dashboard_gerencial: true, dashboard_operacional: true, clientes: true, veiculos: true, estoque: true, ordens_servico: true, ordens_servico_operacional: true, fornecedores: true, relatorios: true, configuracoes: true, usuarios: true, perfis: true
           } },
           { id: 2, nome: 'Supervisor', descricao: 'Acesso intermediário', ativo: true, editavel: true, created_at: new Date().toISOString(), permissoes: {
-            dashboard_gerencial: true, dashboard_operacional: false, clientes: true, veiculos: true, estoque: true, ordens_servico: true, fornecedores: true, relatorios: true, configuracoes: false, usuarios: false, perfis: false
+            dashboard_gerencial: true, dashboard_operacional: false, clientes: true, veiculos: true, estoque: true, ordens_servico: true, ordens_servico_operacional: false, fornecedores: true, relatorios: true, configuracoes: false, usuarios: false, perfis: false
           } },
           { id: 3, nome: 'Operador', descricao: 'Acesso básico', ativo: true, editavel: true, created_at: new Date().toISOString(), permissoes: {
-            dashboard_gerencial: false, dashboard_operacional: true, clientes: false, veiculos: false, estoque: true, ordens_servico: true, fornecedores: false, relatorios: false, configuracoes: false, usuarios: false, perfis: false
+            dashboard_gerencial: false, dashboard_operacional: true, clientes: false, veiculos: false, estoque: true, ordens_servico: false, ordens_servico_operacional: true, fornecedores: false, relatorios: false, configuracoes: false, usuarios: false, perfis: false
           } },
         ]);
         return;
@@ -221,6 +224,7 @@ const GerenciarPerfis: React.FC = () => {
         veiculos: false,
         estoque: false,
         ordens_servico: false,
+        ordens_servico_operacional: false,
         fornecedores: false,
         relatorios: false,
         configuracoes: false,

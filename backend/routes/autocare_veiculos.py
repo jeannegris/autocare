@@ -47,7 +47,14 @@ def listar_veiculos(
     else:
         query = query.filter(Veiculo.ativo == ativo)
     
-    veiculos = query.order_by(Veiculo.id.asc()).offset(skip).limit(limit).all()
+    query_ordenada = query.order_by(Veiculo.id.asc()).offset(skip)
+
+    # Quando houver busca textual, retornar todos os resultados filtrados
+    # para permitir encontrar veículos antigos fora dos 100 mais recentes.
+    if search and search.strip():
+        veiculos = query_ordenada.all()
+    else:
+        veiculos = query_ordenada.limit(limit).all()
     return veiculos
 
 
