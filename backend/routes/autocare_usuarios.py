@@ -32,6 +32,7 @@ def listar_usuarios(
             "nome": usuario.nome,
             "ativo": usuario.ativo,
             "usar_2fa": usuario.usar_2fa,
+            "enviar_email_os": True if usuario.enviar_email_os is None else usuario.enviar_email_os,
             "perfil_id": usuario.perfil_id,
             "perfil_nome": usuario.perfil.nome if usuario.perfil else None,
             "permissoes": json.loads(usuario.perfil.permissoes) if usuario.perfil and usuario.perfil.permissoes else None,
@@ -99,6 +100,7 @@ def criar_usuario(
         senha_hash=senha_hash,
         ativo=usuario.ativo,
         usar_2fa=usuario.usar_2fa,
+        enviar_email_os=usuario.enviar_email_os,
         perfil_id=usuario.perfil_id,
         secret_2fa=None  # Será configurado depois se usar_2fa=True
     )

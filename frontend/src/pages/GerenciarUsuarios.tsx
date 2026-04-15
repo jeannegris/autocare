@@ -11,6 +11,7 @@ interface Usuario {
   nome: string;
   ativo: boolean;
   usar_2fa: boolean;
+  enviar_email_os: boolean;
   perfil_id: number;
   perfil_nome?: string;
   created_at: string;
@@ -30,6 +31,7 @@ interface UsuarioFormData {
   password?: string;
   ativo: boolean;
   usar_2fa: boolean;
+  enviar_email_os: boolean;
   perfil_id: number;
 }
 
@@ -48,6 +50,7 @@ const GerenciarUsuarios: React.FC = () => {
     password: '',
     ativo: true,
     usar_2fa: false,
+    enviar_email_os: true,
     perfil_id: 3  // Padrão: Operador
   });
 
@@ -133,6 +136,7 @@ const GerenciarUsuarios: React.FC = () => {
         nome: formData.nome,
         ativo: formData.ativo,
         usar_2fa: formData.usar_2fa,
+        enviar_email_os: formData.enviar_email_os,
         perfil_id: formData.perfil_id
       };
 
@@ -242,6 +246,7 @@ const GerenciarUsuarios: React.FC = () => {
       password: '', // Não preencher senha ao editar
       ativo: usuario.ativo,
       usar_2fa: usuario.usar_2fa,
+      enviar_email_os: usuario.enviar_email_os ?? true,
       perfil_id: usuario.perfil_id
     });
     setShowModal(true);
@@ -255,6 +260,7 @@ const GerenciarUsuarios: React.FC = () => {
       password: '',
       ativo: true,
       usar_2fa: false,
+      enviar_email_os: true,
       perfil_id: 3  // Padrão: Operador
     });
     setEditingUsuario(null);
@@ -532,6 +538,19 @@ const GerenciarUsuarios: React.FC = () => {
                   />
                   <label htmlFor="usar_2fa" className="ml-2 text-sm font-medium text-gray-700">
                     Habilitar autenticação de dois fatores (2FA)
+                  </label>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="enviar_email_os"
+                    checked={formData.enviar_email_os}
+                    onChange={(e) => setFormData({ ...formData, enviar_email_os: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="enviar_email_os" className="ml-2 text-sm font-medium text-gray-700">
+                    Habilitar envio automático de e-mail no fechamento da OS
                   </label>
                 </div>
                 

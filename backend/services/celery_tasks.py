@@ -11,6 +11,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 import os
+import logging
 
 # Configurar Celery
 celery_app = Celery(
@@ -47,6 +48,38 @@ celery_app.conf.update(
         },
     },
 )
+
+logger = logging.getLogger(__name__)
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=120)
+def enviar_email_fechamento_os_task(
+    self,
+    ordem_id: int,
+    destinatario_override: str = None,
+    ignorar_opt_in: bool = False,
+    origem_envio: str = "automatico",
+):
+    """Envia e-mail com PDF de fechamento de OS para o cliente."""
+    from services.email_service import enviar_email_fechamento_os
+
+    db = SessionLocal()
+    try:
+        resultado = enviar_email_fechamento_os(
+            db,
+            ordem_id,
+            destinatario_override=destinatario_override,
+            ignorar_opt_in=ignorar_opt_in,
+            origem_envio=origem_envio,
+        )
+        if not resultado.get("success") and resultado.get("retryable", False):
+            raise self.retry(exc=Exception(resultado.get("message", "Erro no envio de e-mail")))
+        return resultado
+    except Exception as exc:
+        logger.exception("Erro na task enviar_email_fechamento_os_task para OS %s", ordem_id)
+        raise
+    finally:
+        db.close()
 
 @celery_app.task
 def verificar_aniversarios():

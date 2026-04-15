@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, or_
 from typing import List, Optional
@@ -1373,6 +1373,7 @@ def atualizar_ordem_servico(
     # Atualizar apenas campos não nulos (exceto itens que seráo tratados separadamente)
     # Guardar status anterior para detectar transição corretamente
     previous_status = normalizar_status_ordem(ordem.status) or ordem.status
+    disparar_email_fechamento = False
     if ordem.status != previous_status:
         ordem.status = previous_status
     update_data = ordem_data.dict(exclude_unset=True)
@@ -1541,6 +1542,7 @@ def atualizar_ordem_servico(
         # Para CONCLUIDA, atualizar data de conclusão
         if novo_status == "CONCLUIDA":
             ordem.data_conclusao = datetime.now()
+            disparar_email_fechamento = True
             # Aplicar taxa de pagamento baseada na forma de pagamento e máquina selecionada
             maquina_id = update_data.get('maquina_id')
             aplicar_taxa_pagamento(db, ordem, maquina_id)
@@ -1848,8 +1850,108 @@ def atualizar_ordem_servico(
     
     db.commit()
     db.refresh(ordem)
+
+    if disparar_email_fechamento:
+        try:
+            from services.celery_tasks import enviar_email_fechamento_os_task
+
+            enviar_email_fechamento_os_task.delay(ordem.id, None, False, "automatico")
+            logger.info("Envio de e-mail de fechamento da OS %s enfileirado com sucesso", ordem.numero)
+        except Exception:
+            # Fallback síncrono caso worker/broker não esteja disponível.
+            logger.warning("Falha ao enfileirar e-mail da OS %s; tentando envio síncrono", ordem.numero)
+            try:
+                from services.email_service import enviar_email_fechamento_os
+
+                resultado = enviar_email_fechamento_os(db, ordem.id, origem_envio="automatico")
+                if not resultado.get("success"):
+                    logger.warning("Envio síncrono de e-mail da OS %s não concluído: %s", ordem.numero, resultado.get("message"))
+            except Exception:
+                logger.exception("Erro no fallback de envio de e-mail da OS %s", ordem.numero)
     
     return buscar_ordem_servico(ordem.id, db)
+
+
+@router.post("/{ordem_id}/enviar-email-fechamento")
+def enviar_email_fechamento_manual(ordem_id: int, db: Session = Depends(get_db)):
+    """Endpoint de teste/reenvio de e-mail de fechamento de OS."""
+    ordem = db.query(OrdemServico).filter(OrdemServico.id == ordem_id).first()
+    if not ordem:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ordem de serviço não encontrada"
+        )
+
+    try:
+        from services.celery_tasks import enviar_email_fechamento_os_task
+
+        enviar_email_fechamento_os_task.delay(ordem.id, None, False, "manual")
+        return {
+            "success": True,
+            "message": f"Envio do fechamento da OS {ordem.numero} enfileirado com sucesso",
+            "ordem_id": ordem.id,
+            "modo": "assíncrono"
+        }
+    except Exception:
+        from services.email_service import enviar_email_fechamento_os
+
+        resultado = enviar_email_fechamento_os(db, ordem.id, origem_envio="manual")
+        if not resultado.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=resultado.get("message", "Falha ao enviar e-mail de fechamento")
+            )
+        return {
+            "success": True,
+            "message": resultado.get("message"),
+            "ordem_id": ordem.id,
+            "modo": "síncrono"
+        }
+
+
+@router.post("/enviar-email-ultima-os-teste")
+def enviar_email_ultima_os_teste(
+    destinatario: str = Query(default="jean.negris@gmail.com"),
+    db: Session = Depends(get_db),
+):
+    """Envia a última OS concluída para um destinatário de teste."""
+    ultima_os = db.query(OrdemServico).filter(
+        filtro_status_ordem(OrdemServico.status, "CONCLUIDA")
+    ).order_by(
+        OrdemServico.data_conclusao.desc().nullslast(),
+        OrdemServico.id.desc()
+    ).first()
+
+    if not ultima_os:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhuma OS concluída encontrada para teste"
+        )
+
+    from services.email_service import enviar_email_fechamento_os
+
+    resultado = enviar_email_fechamento_os(
+        db,
+        ultima_os.id,
+        destinatario_override=destinatario,
+        ignorar_opt_in=True,
+        origem_envio="teste",
+    )
+
+    if not resultado.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=resultado.get("message", "Falha ao enviar e-mail de teste")
+        )
+
+    return {
+        "success": True,
+        "message": resultado.get("message"),
+        "ordem_id": ultima_os.id,
+        "ordem_numero": ultima_os.numero,
+        "destinatario": destinatario,
+        "modo": "teste_ultima_os"
+    }
 
 @router.delete("/{ordem_id}")
 def cancelar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
@@ -1871,4 +1973,116 @@ def cancelar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Ordem de serviço cancelada com sucesso"}
+
+
+@router.post("/teste/enviar-ultima-os-para-email-teste")
+def enviar_ultima_os_para_teste(db: Session = Depends(get_db)):
+    """
+    Endpoint de teste: Envia a última OS concluída para jean.negris@gmail.com
+    Útil para validar funcionamento do sistema de envio de e-mail
+    """
+    from services.email_service import enviar_email_fechamento_os
+    from sqlalchemy import desc
+    
+    try:
+        # Buscar última OS concluída
+        ultima_os = db.query(OrdemServico).filter(
+            OrdemServico.status.ilike('%CONCLUIDA%')
+        ).order_by(desc(OrdemServico.data_conclusao)).first()
+        
+        if not ultima_os:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Nenhuma OS concluída encontrada"
+            )
+        
+        # Sobrescrever e-mail temporariamente para teste
+        cliente_original = ultima_os.cliente
+        email_teste = "jean.negris@gmail.com"
+        
+        try:
+            # Montar dados para PDF
+            itens = db.query(ItemOrdem).filter(ItemOrdem.ordem_id == ultima_os.id).all()
+            
+            # Importar e chamar função de envio
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.application import MIMEApplication
+            from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS
+            from models.autocare_models import Configuracao
+            
+            # Ler config SMTP do banco
+            smtp_server = db.query(Configuracao).filter(Configuracao.chave == "smtp_server").first()
+            smtp_port_cfg = db.query(Configuracao).filter(Configuracao.chave == "smtp_port").first()
+            smtp_user_cfg = db.query(Configuracao).filter(Configuracao.chave == "smtp_user").first()
+            smtp_pass_cfg = db.query(Configuracao).filter(Configuracao.chave == "smtp_pass").first()
+            
+            server_url = smtp_server.valor if smtp_server and smtp_server.valor else SMTP_SERVER
+            server_port = int(smtp_port_cfg.valor) if smtp_port_cfg and smtp_port_cfg.valor else SMTP_PORT
+            server_user = smtp_user_cfg.valor if smtp_user_cfg and smtp_user_cfg.valor else SMTP_USER
+            server_pass = smtp_pass_cfg.valor if smtp_pass_cfg and smtp_pass_cfg.valor else SMTP_PASS
+            
+            if not server_user or not server_pass:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Credenciais SMTP não configuradas"
+                )
+            
+            # Gerar PDF
+            from services.email_service import gerar_pdf_fechamento_os
+            pdf_bytes = gerar_pdf_fechamento_os(db, ultima_os.id)
+            
+            # Montar e-mail
+            msg = MIMEMultipart()
+            msg["From"] = server_user
+            msg["To"] = email_teste
+            msg["Subject"] = f"TESTE - Resumo da OS {ultima_os.numero} - AutoCare"
+            
+            corpo = (
+                f"🧪 TESTE DE ENVIO DE EMAIL\n\n"
+                f"Última OS concluída (enviada para teste):\n"
+                f"Número: {ultima_os.numero}\n"
+                f"Cliente: {cliente_original.nome if cliente_original else 'N/A'}\n"
+                f"E-mail original do cliente: {cliente_original.email if cliente_original else 'N/A'}\n"
+                f"Valor Total: R$ {float(ultima_os.valor_total or 0):.2f}\n"
+                f"Data Conclusão: {ultima_os.data_conclusao.strftime('%d/%m/%Y %H:%M') if ultima_os.data_conclusao else 'N/A'}\n\n"
+                f"Este é um teste de funcionalidade. Segue em anexo o PDF do relatório."
+            )
+            msg.attach(MIMEText(corpo, "plain", "utf-8"))
+            
+            # Anexar PDF
+            anexo = MIMEApplication(pdf_bytes, _subtype="pdf")
+            anexo.add_header("Content-Disposition", "attachment", filename=f"TESTE_OS_{ultima_os.numero}.pdf")
+            msg.attach(anexo)
+            
+            # Enviar
+            with smtplib.SMTP(server_url, server_port, timeout=30) as server:
+                server.starttls()
+                server.login(server_user, server_pass)
+                server.send_message(msg)
+            
+            return {
+                "success": True,
+                "message": f"Teste enviado com sucesso para {email_teste}",
+                "ordem_id": ultima_os.id,
+                "ordem_numero": ultima_os.numero,
+                "email_destino": email_teste,
+                "cliente_original": cliente_original.nome if cliente_original else "N/A",
+                "email_cliente_original": cliente_original.email if cliente_original else "N/A"
+            }
+        
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao enviar e-mail de teste: {str(e)}"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro: {str(e)}"
+        )
 

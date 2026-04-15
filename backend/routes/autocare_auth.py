@@ -154,6 +154,7 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
             "nome": user.nome,
             "ativo": user.ativo,
             "usar_2fa": user.usar_2fa,
+            "enviar_email_os": user.enviar_email_os,
             "perfil_id": user.perfil_id,
             "perfil_nome": user.perfil.nome if user.perfil else None,
             "permissoes": json.loads(user.perfil.permissoes) if user.perfil and user.perfil.permissoes else None
@@ -252,6 +253,7 @@ def verify_2fa(verify_data: Verify2FARequest, db: Session = Depends(get_db)):
             "nome": user.nome,
             "ativo": user.ativo,
             "usar_2fa": user.usar_2fa,
+            "enviar_email_os": user.enviar_email_os,
             "has_2fa_configured": bool(user.secret_2fa),
             "perfil_id": user.perfil_id,
             "perfil_nome": user.perfil.nome if user.perfil else None,
@@ -269,6 +271,7 @@ def get_current_user_info(current_user: Usuario = Depends(get_current_user)):
         "nome": current_user.nome,
         "ativo": current_user.ativo,
         "usar_2fa": current_user.usar_2fa,
+        "enviar_email_os": current_user.enviar_email_os,
         "has_2fa_configured": bool(current_user.secret_2fa),
         "perfil_id": current_user.perfil_id,
         "perfil_nome": current_user.perfil.nome if current_user.perfil else None,

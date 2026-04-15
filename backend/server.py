@@ -65,6 +65,16 @@ async def lifespan(app: FastAPI):
     # Inicializa RBAC (perfis e vínculos) caso ainda não exista
     try:
         db = SessionLocal()
+        # Compatibilidade de esquema: garantir coluna de opt-in de envio de e-mail em OS.
+        db.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS enviar_email_os BOOLEAN DEFAULT TRUE"))
+        db.execute(text("UPDATE usuarios SET enviar_email_os = TRUE WHERE enviar_email_os IS NULL"))
+        db.execute(text("""
+            INSERT INTO configuracoes (chave, valor, descricao, tipo)
+            VALUES ('email_envio_habilitado', 'true', 'Habilita/desabilita o envio de e-mail em toda a aplicação', 'boolean')
+            ON CONFLICT (chave) DO NOTHING
+        """))
+        db.commit()
+
         # Seed de perfis padrão se necessário
         perfis_count = db.query(Perfil).count()
         if perfis_count == 0:

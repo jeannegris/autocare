@@ -23,6 +23,7 @@ class ClienteBase(BaseModel):
     contato_responsavel: Optional[str] = None
     rg_ie: Optional[str] = None
     observacoes: Optional[str] = None
+    enviar_relatorio_email: bool = True
     ativo: bool = True
 
     @validator('tipo')
@@ -55,12 +56,14 @@ class ClienteUpdate(BaseModel):
     contato_responsavel: Optional[str] = None
     rg_ie: Optional[str] = None
     observacoes: Optional[str] = None
+    enviar_relatorio_email: Optional[bool] = None
     ativo: Optional[bool] = None
 
 class ClienteResponse(ClienteBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    enviar_relatorio_email: bool = True
     # Campos calculados do frontend
     total_gasto: Optional[float] = 0
     total_servicos: Optional[int] = 0
@@ -92,6 +95,7 @@ class ClienteList(BaseModel):
     razao_social: Optional[str] = None
     contato_responsavel: Optional[str] = None
     data_nascimento: Optional[date] = None
+    enviar_relatorio_email: bool = True
     ativo: bool
     created_at: datetime
     updated_at: Optional[datetime] = None

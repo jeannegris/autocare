@@ -28,6 +28,7 @@ class Cliente(Base):
     contato_responsavel = Column(String(255))
     rg_ie = Column(String(20))
     observacoes = Column(Text)
+    enviar_relatorio_email = Column(Boolean, default=True)  # Opt-in envio automático de relatório de OS
     ativo = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -417,6 +418,7 @@ class Usuario(Base):
     nome = Column(String(255), nullable=False)
     ativo = Column(Boolean, default=True)
     usar_2fa = Column(Boolean, default=False)
+    enviar_email_os = Column(Boolean, default=True)
     secret_2fa = Column(String(32), nullable=True)  # Secret para TOTP (pyotp)
     perfil_id = Column(Integer, ForeignKey("perfis.id"), nullable=False, default=3)  # Padrão: Operador
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -444,6 +446,22 @@ class BackupLog(Base):
 
     def __repr__(self):
         return f"<BackupLog(id={self.id}, tipo={self.tipo}, data_hora={self.data_hora}, status={self.status})>"
+
+
+class EmailEnvioLog(Base):
+    """Auditoria de envios de e-mail de fechamento de OS"""
+    __tablename__ = "email_envios_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    data_hora = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    ordem_id = Column(Integer, ForeignKey("ordens_servico.id"), nullable=True, index=True)
+    ordem_numero = Column(String(20), nullable=True, index=True)
+    destinatario = Column(String(255), nullable=True, index=True)
+    origem_envio = Column(String(30), nullable=False, default="automatico", index=True)  # automatico, manual, teste
+    status = Column(String(20), nullable=False, default="erro", index=True)  # sucesso, erro, bloqueado
+    mensagem = Column(Text, nullable=True)
+
+    ordem = relationship("OrdemServico")
 
 
 class CompraFornecedor(Base):

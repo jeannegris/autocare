@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner';
-import { Settings, Save, DollarSign, Lock, ShieldCheck, AlertTriangle, Wrench, Plus, Edit2, Trash2, CheckCircle, X, Database, Server, Activity, HardDrive, Cpu, RefreshCw } from 'lucide-react';
+import { Settings, Save, DollarSign, Lock, ShieldCheck, AlertTriangle, Wrench, Plus, Edit2, Trash2, CheckCircle, X, Database, Server, Activity, HardDrive, Cpu, RefreshCw, Mail, Eye, EyeOff } from 'lucide-react';
 
 interface Configuracao {
   id: number;
@@ -88,6 +88,17 @@ interface BackupLog {
   erro_detalhes: string | null;
 }
 
+interface EmailEnvioLog {
+  id: number;
+  data_hora: string | null;
+  ordem_id: number | null;
+  ordem_numero: string | null;
+  destinatario: string | null;
+  origem_envio: string | null;
+  status: string | null;
+  mensagem: string | null;
+}
+
 export default function Configuracoes() {
   const queryClient = useQueryClient();
   const [senhaAtual, setSenhaAtual] = useState('');
@@ -95,6 +106,12 @@ export default function Configuracoes() {
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [margemLucro, setMargemLucro] = useState('');
   const [descontoMaximo, setDescontoMaximo] = useState('');
+  const [smtpServer, setSmtpServer] = useState('');
+  const [smtpPort, setSmtpPort] = useState('587');
+  const [smtpUser, setSmtpUser] = useState('');
+  const [smtpPass, setSmtpPass] = useState('');
+  const [emailEnvioHabilitado, setEmailEnvioHabilitado] = useState(true);
+  const [mostrarSmtpPass, setMostrarSmtpPass] = useState(false);
   const [senhaMargemLucro, setSenhaMargemLucro] = useState('');
   const [mostrarModalAplicarMargem, setMostrarModalAplicarMargem] = useState(false);
   const [mostrarModalSugestao, setMostrarModalSugestao] = useState(false);
@@ -109,6 +126,9 @@ export default function Configuracoes() {
   const [senhaDeletar, setSenhaDeletar] = useState('');
   const [mostrarModalLogsServicos, setMostrarModalLogsServicos] = useState(false);
   const [logsServicos, setLogsServicos] = useState('');
+  const [mostrarModalLogsEmail, setMostrarModalLogsEmail] = useState(false);
+  const [mostrarConfirmacaoLimparLogsEmail, setMostrarConfirmacaoLimparLogsEmail] = useState(false);
+  const [senhaLimparLogsEmail, setSenhaLimparLogsEmail] = useState('');
   // Estados para Máquinas
   const [mostrarModalMaquina, setMostrarModalMaquina] = useState(false);
   const [maquinaEdit, setMaquinaEdit] = useState<Maquina | null>(null);
@@ -320,6 +340,39 @@ export default function Configuracoes() {
     }
   });
 
+  // Mutation: salvar configurações de e-mail (SMTP)
+  const mutationSmtp = useMutation({
+    mutationFn: async () => {
+      await apiFetch('/configuracoes/smtp_server', {
+        method: 'PUT',
+        body: JSON.stringify({ valor: smtpServer })
+      });
+      await apiFetch('/configuracoes/smtp_port', {
+        method: 'PUT',
+        body: JSON.stringify({ valor: smtpPort })
+      });
+      await apiFetch('/configuracoes/smtp_user', {
+        method: 'PUT',
+        body: JSON.stringify({ valor: smtpUser })
+      });
+      await apiFetch('/configuracoes/smtp_pass', {
+        method: 'PUT',
+        body: JSON.stringify({ valor: smtpPass })
+      });
+      await apiFetch('/configuracoes/email_envio_habilitado', {
+        method: 'PUT',
+        body: JSON.stringify({ valor: String(emailEnvioHabilitado) })
+      });
+    },
+    onSuccess: () => {
+      toast.success('Configurações de e-mail salvas com sucesso!');
+      queryClient.invalidateQueries({ queryKey: ['configuracoes'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao salvar configurações de e-mail');
+    }
+  });
+
   // Mutation: aplicar margem de lucro
   const mutationAplicarMargem = useMutation({
     mutationFn: async (dados: AplicarMargemRequest) => {
@@ -491,6 +544,39 @@ export default function Configuracoes() {
     enabled: false
   });
 
+  // Query: listar logs de envio de e-mail
+  const {
+    data: logsEmail,
+    refetch: refetchLogsEmail,
+    isFetching: isFetchingLogsEmail,
+  } = useQuery<EmailEnvioLog[]>({
+    queryKey: ['email-envios-logs'],
+    queryFn: async () => {
+      const response = await apiFetch('/configuracoes/email-envios-logs?limit=200');
+      return Array.isArray(response) ? response : [];
+    },
+    enabled: false
+  });
+
+  // Mutation: limpar logs de envio de e-mail
+  const mutationLimparLogsEmail = useMutation({
+    mutationFn: async (senha: string) => {
+      return await apiFetch('/configuracoes/email-envios-logs/limpar', {
+        method: 'DELETE',
+        body: JSON.stringify({ senha })
+      });
+    },
+    onSuccess: (data: any) => {
+      toast.success(data?.mensagem || 'Logs de envio removidos com sucesso');
+      setSenhaLimparLogsEmail('');
+      setMostrarConfirmacaoLimparLogsEmail(false);
+      refetchLogsEmail();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao limpar logs de envio');
+    }
+  });
+
   // Mutation: restaurar backup
   const mutationRestaurar = useMutation({
     mutationFn: async ({ backupId, senha }: { backupId: number; senha: string }) => {
@@ -607,6 +693,22 @@ export default function Configuracoes() {
     });
   };
 
+  const handleSalvarSmtp = () => {
+    if (!smtpServer.trim()) {
+      toast.error('O campo Servidor SMTP é obrigatório');
+      return;
+    }
+    if (!smtpPort.trim() || Number.isNaN(Number(smtpPort)) || Number(smtpPort) <= 0) {
+      toast.error('Informe uma Porta SMTP válida');
+      return;
+    }
+    if (!smtpUser.trim()) {
+      toast.error('O campo Remetente é obrigatório');
+      return;
+    }
+    mutationSmtp.mutate();
+  };
+
   const handleAplicarMargemLucro = () => {
     if (!margemLucro || parseFloat(margemLucro) <= 0) {
       toast.error('Informe uma margem de lucro válida');
@@ -697,9 +799,22 @@ export default function Configuracoes() {
     if (configuracoes) {
       const margemConfig = configuracoes.find(c => c.chave === 'margem_lucro_padrao');
       const descontoConfig = configuracoes.find(c => c.chave === 'desconto_maximo_os');
+      const smtpServerConfig = configuracoes.find(c => c.chave === 'smtp_server');
+      const smtpPortConfig = configuracoes.find(c => c.chave === 'smtp_port');
       
       if (margemConfig) setMargemLucro(margemConfig.valor);
       if (descontoConfig) setDescontoMaximo(descontoConfig.valor);
+      if (smtpServerConfig) setSmtpServer(smtpServerConfig.valor);
+      if (smtpPortConfig) setSmtpPort(smtpPortConfig.valor);
+      const smtpUserConfig = configuracoes.find(c => c.chave === 'smtp_user');
+      const smtpPassConfig = configuracoes.find(c => c.chave === 'smtp_pass');
+      const emailEnvioHabilitadoConfig = configuracoes.find(c => c.chave === 'email_envio_habilitado');
+      if (smtpUserConfig) setSmtpUser(smtpUserConfig.valor);
+      if (smtpPassConfig) setSmtpPass(smtpPassConfig.valor);
+      if (emailEnvioHabilitadoConfig) {
+        const valor = String(emailEnvioHabilitadoConfig.valor || '').toLowerCase();
+        setEmailEnvioHabilitado(valor === 'true' || valor === '1' || valor === 'sim' || valor === 'yes' || valor === 'on');
+      }
     }
   }, [configuracoes]);
 
@@ -1126,6 +1241,123 @@ export default function Configuracoes() {
               {mutationConfig.isPending ? 'Salvando...' : 'Salvar'}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Card: E-mail */}
+      <div className="p-6 bg-white rounded-lg shadow-md">
+        <h2 className="flex items-center mb-2 text-xl font-semibold text-gray-800">
+          <Mail className="w-5 h-5 mr-2 text-blue-600" />
+          E-mail
+        </h2>
+        <p className="mb-6 text-sm text-gray-600">
+          Configure o remetente de e-mail para envio automático dos relatórios de Ordens de Serviço
+          ao cliente ao concluir um atendimento.
+        </p>
+
+        <div className="space-y-4 max-w-lg">
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <label className="inline-flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={emailEnvioHabilitado}
+                onChange={(e) => setEmailEnvioHabilitado(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>
+                Habilitar envio de e-mail em toda a aplicação
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  Quando desabilitado, nenhum envio de e-mail de OS será realizado.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div>
+            <label className="block mb-2 text-sm font-medium text-gray-700">
+              Servidor SMTP
+            </label>
+            <input
+              type="text"
+              value={smtpServer}
+              onChange={(e) => setSmtpServer(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="smtp.gmail.com"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-2 text-sm font-medium text-gray-700">
+              Porta SMTP
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={smtpPort}
+              onChange={(e) => setSmtpPort(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="587"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-2 text-sm font-medium text-gray-700">
+              Remetente
+            </label>
+            <input
+              type="email"
+              value={smtpUser}
+              onChange={(e) => setSmtpUser(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="exemplo@gmail.com"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-2 text-sm font-medium text-gray-700">
+              Senha do SMTP para aplicativos
+            </label>
+            <div className="relative">
+              <input
+                type={mostrarSmtpPass ? 'text' : 'password'}
+                value={smtpPass}
+                onChange={(e) => setSmtpPass(e.target.value)}
+                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Senha de app de 16 caracteres gerada no Google"
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarSmtpPass(!mostrarSmtpPass)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+              >
+                {mostrarSmtpPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Acesse <strong>myaccount.google.com/apppasswords</strong> para gerar a senha de aplicativo.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            onClick={handleSalvarSmtp}
+            disabled={mutationSmtp.isPending}
+            className="flex items-center px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            {mutationSmtp.isPending ? 'Salvando...' : 'Salvar'}
+          </button>
+
+          <button
+            onClick={() => {
+              setMostrarModalLogsEmail(true);
+              refetchLogsEmail();
+            }}
+            className="px-3 py-2 text-xs text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Log de envio de e-mail
+          </button>
         </div>
       </div>
 
@@ -2239,6 +2471,143 @@ export default function Configuracoes() {
               <button
                 onClick={() => setMostrarModalLogsServicos(false)}
                 className="px-6 py-2 text-white bg-purple-600 rounded-md hover:bg-purple-700"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Log de envio de e-mail */}
+      {mostrarModalLogsEmail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="relative w-full max-w-5xl p-6 mx-4 bg-white rounded-lg shadow-xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="flex items-center text-xl font-semibold text-gray-800">
+                <Mail className="w-5 h-5 mr-2 text-blue-600" />
+                Log de envio de e-mail
+              </h2>
+              <button
+                onClick={() => setMostrarModalLogsEmail(false)}
+                className="text-gray-400 hover:text-gray-600"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs text-gray-500">
+                Exibindo os últimos envios (sucesso, erro ou bloqueado).
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setMostrarConfirmacaoLimparLogsEmail((prev) => !prev)}
+                  className="px-3 py-1.5 text-xs text-red-700 border border-red-300 rounded-md hover:bg-red-50"
+                >
+                  Limpar log
+                </button>
+                <button
+                  onClick={() => refetchLogsEmail()}
+                  disabled={isFetchingLogsEmail}
+                  className="px-3 py-1.5 text-xs text-blue-700 border border-blue-300 rounded-md hover:bg-blue-50 disabled:opacity-60"
+                >
+                  {isFetchingLogsEmail ? 'Atualizando...' : 'Atualizar'}
+                </button>
+              </div>
+            </div>
+
+            {mostrarConfirmacaoLimparLogsEmail && (
+              <div className="mb-3 p-3 rounded-md border border-red-200 bg-red-50">
+                <p className="text-xs text-red-800 mb-2">
+                  Para limpar os logs, informe a senha do supervisor configurada na aplicação.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    value={senhaLimparLogsEmail}
+                    onChange={(e) => setSenhaLimparLogsEmail(e.target.value)}
+                    placeholder="Senha do supervisor"
+                    className="flex-1 px-3 py-2 text-sm border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!senhaLimparLogsEmail.trim()) {
+                        toast.error('Informe a senha do supervisor');
+                        return;
+                      }
+                      mutationLimparLogsEmail.mutate(senhaLimparLogsEmail);
+                    }}
+                    disabled={mutationLimparLogsEmail.isPending}
+                    className="px-3 py-2 text-sm text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-gray-400"
+                  >
+                    {mutationLimparLogsEmail.isPending ? 'Limpando...' : 'Confirmar limpeza'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMostrarConfirmacaoLimparLogsEmail(false);
+                      setSenhaLimparLogsEmail('');
+                    }}
+                    className="px-3 py-2 text-sm text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="overflow-auto border border-gray-200 rounded-md flex-1">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr className="text-left text-gray-700">
+                    <th className="px-3 py-2 border-b">Data/Hora</th>
+                    <th className="px-3 py-2 border-b">OS</th>
+                    <th className="px-3 py-2 border-b">Destino</th>
+                    <th className="px-3 py-2 border-b">Origem</th>
+                    <th className="px-3 py-2 border-b">Status</th>
+                    <th className="px-3 py-2 border-b">Mensagem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(logsEmail || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-8 text-center text-gray-500">
+                        Nenhum log de envio encontrado.
+                      </td>
+                    </tr>
+                  ) : (
+                    (logsEmail || []).map((log) => (
+                      <tr key={log.id} className="hover:bg-gray-50 align-top">
+                        <td className="px-3 py-2 border-b text-xs whitespace-nowrap">{log.data_hora || '-'}</td>
+                        <td className="px-3 py-2 border-b whitespace-nowrap">{log.ordem_numero || '-'}</td>
+                        <td className="px-3 py-2 border-b">{log.destinatario || '-'}</td>
+                        <td className="px-3 py-2 border-b capitalize">{log.origem_envio || '-'}</td>
+                        <td className="px-3 py-2 border-b">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                              log.status === 'sucesso'
+                                ? 'bg-green-100 text-green-700'
+                                : log.status === 'bloqueado'
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {log.status || '-'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 border-b text-xs">{log.mensagem || '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setMostrarModalLogsEmail(false)}
+                className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
               >
                 Fechar
               </button>

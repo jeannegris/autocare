@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from db import get_db
-from models.autocare_models import Configuracao, Produto, Usuario, TaxaPagamento, Maquina
+from models.autocare_models import Configuracao, EmailEnvioLog, Produto, Usuario, TaxaPagamento, Maquina
 import hashlib
 import os
 import sys
@@ -137,6 +137,26 @@ class VerificarServicosLogsResponse(BaseModel):
     mensagem: str
 
 
+class EmailEnvioLogResponse(BaseModel):
+    id: int
+    data_hora: Optional[str]
+    ordem_id: Optional[int]
+    ordem_numero: Optional[str]
+    destinatario: Optional[str]
+    origem_envio: Optional[str]
+    status: Optional[str]
+    mensagem: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class LimparEmailLogsResponse(BaseModel):
+    sucesso: bool
+    removidos: int
+    mensagem: str
+
+
 # Função auxiliar para hash de senha
 def hash_senha(senha: str) -> str:
     """Hash SHA256 da senha"""
@@ -192,7 +212,42 @@ def listar_configuracoes(db: Session = Depends(get_db)):
         "Alerta de estoque baixo",
         "string"
     )
-    
+    get_or_create_config(
+        db,
+        "smtp_server",
+        os.getenv("SMTP_SERVER", "smtp.gmail.com"),
+        "Servidor SMTP para envio de e-mails",
+        "string"
+    )
+    get_or_create_config(
+        db,
+        "smtp_port",
+        os.getenv("SMTP_PORT", "587"),
+        "Porta do servidor SMTP",
+        "number"
+    )
+    get_or_create_config(
+        db,
+        "smtp_user",
+        os.getenv("SMTP_USER", ""),
+        "Remetente do e-mail (endereço Gmail utilizado para envios)",
+        "string"
+    )
+    get_or_create_config(
+        db,
+        "smtp_pass",
+        os.getenv("SMTP_PASS", ""),
+        "Senha do SMTP para aplicativos (Google App Password)",
+        "string"
+    )
+    get_or_create_config(
+        db,
+        "email_envio_habilitado",
+        "true",
+        "Habilita/desabilita o envio de e-mail em toda a aplicação",
+        "boolean"
+    )
+
     return db.query(Configuracao).all()
 
 # ====== ENDPOINTS DE BACKUP (devem vir antes de /{chave} para evitar conflito de rota) ======
@@ -346,6 +401,73 @@ def sincronizar_backups_orfaos(db: Session = Depends(get_db)):
         "total_arquivos": len(arquivos_sql),
         "total_registrados": len(caminhos_registrados) - len(removidos) + len(sincronizados)
     }
+
+
+@router.get("/email-envios-logs", response_model=List[EmailEnvioLogResponse])
+def listar_logs_envio_email(
+    skip: int = 0,
+    limit: int = 100,
+    ordem_id: Optional[int] = None,
+    status_envio: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Lista logs de auditoria dos envios de e-mail de OS."""
+    query = db.query(EmailEnvioLog).order_by(EmailEnvioLog.data_hora.desc())
+
+    if ordem_id is not None:
+        query = query.filter(EmailEnvioLog.ordem_id == ordem_id)
+    if status_envio:
+        query = query.filter(EmailEnvioLog.status == status_envio)
+
+    logs = query.offset(skip).limit(limit).all()
+
+    result = []
+    for log in logs:
+        result.append(EmailEnvioLogResponse(
+            id=log.id,
+            data_hora=log.data_hora.isoformat() if log.data_hora else None,
+            ordem_id=log.ordem_id,
+            ordem_numero=log.ordem_numero,
+            destinatario=log.destinatario,
+            origem_envio=log.origem_envio,
+            status=log.status,
+            mensagem=log.mensagem,
+        ))
+
+    return result
+
+
+@router.delete("/email-envios-logs/limpar", response_model=LimparEmailLogsResponse)
+def limpar_logs_envio_email(
+    dados: ValidarSenhaRequest,
+    db: Session = Depends(get_db)
+):
+    """Limpa todos os logs de envio de e-mail (requer senha do supervisor)."""
+    config_senha = db.query(Configuracao).filter(
+        Configuracao.chave == "senha_supervisor"
+    ).first()
+
+    if not config_senha:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Configuração de senha não encontrada"
+        )
+
+    senha_hash = hash_senha(dados.senha)
+    if senha_hash != config_senha.valor:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Senha do supervisor inválida"
+        )
+
+    removidos = db.query(EmailEnvioLog).delete(synchronize_session=False)
+    db.commit()
+
+    return LimparEmailLogsResponse(
+        sucesso=True,
+        removidos=int(removidos or 0),
+        mensagem=f"{int(removidos or 0)} log(s) de envio removido(s) com sucesso"
+    )
 
 
 @router.post("/backups/{backup_id}/restaurar", response_model=RestaurarBackupResponse)
@@ -1238,6 +1360,9 @@ def atualizar_configuracao(
     # Se for senha, fazer hash
     if config.tipo == 'password':
         config.valor = hash_senha(dados.valor)
+    elif config.tipo == 'boolean':
+        valor_str = str(dados.valor).strip().lower()
+        config.valor = 'true' if valor_str in ('1', 'true', 'sim', 'yes', 'on') else 'false'
     else:
         config.valor = dados.valor
     

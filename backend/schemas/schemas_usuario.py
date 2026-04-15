@@ -35,6 +35,7 @@ class UsuarioBase(BaseModel):
     nome: str
     ativo: Optional[bool] = True
     usar_2fa: Optional[bool] = False
+    enviar_email_os: Optional[bool] = True
     perfil_id: Optional[int] = 3  # Padrão: Operador
 
 class UsuarioCreate(UsuarioBase):
@@ -61,6 +62,7 @@ class UsuarioUpdate(BaseModel):
     nome: Optional[str] = None
     ativo: Optional[bool] = None
     usar_2fa: Optional[bool] = None
+    enviar_email_os: Optional[bool] = None
     password: Optional[str] = None
     perfil_id: Optional[int] = None
     
@@ -87,6 +89,7 @@ class UsuarioListResponse(BaseModel):
     nome: str
     ativo: bool
     usar_2fa: bool
+    enviar_email_os: bool
     perfil_id: int
     perfil_nome: Optional[str] = None
     permissoes: Optional[Dict] = None
@@ -105,6 +108,7 @@ class UserMeResponse(BaseModel):
     nome: str
     ativo: bool
     usar_2fa: bool
+    enviar_email_os: bool
     has_2fa_configured: bool
     perfil_id: int
     perfil_nome: Optional[str] = None

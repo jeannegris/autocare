@@ -56,6 +56,7 @@ interface Cliente {
   razao_social?: string
   contato_responsavel?: string
   observacoes?: string
+  enviar_relatorio_email?: boolean
   created_at: string
   updated_at: string
   total_gasto?: number
@@ -85,6 +86,7 @@ interface ClienteFormData {
   razao_social?: string
   contato_responsavel?: string
   observacoes?: string
+  enviar_relatorio_email: boolean
 }
 
 interface ClientesPaginadoResponse {
@@ -174,7 +176,8 @@ function ClienteModal({
     nome_fantasia: '',
     razao_social: '',
     contato_responsavel: '',
-    observacoes: ''
+    observacoes: '',
+    enviar_relatorio_email: true
   })
 
   // Refs para focar nos campos com erro
@@ -219,7 +222,8 @@ function ClienteModal({
         nome_fantasia: cliente.nome_fantasia || '',
         razao_social: cliente.razao_social || '',
         contato_responsavel: cliente.contato_responsavel || '',
-        observacoes: cliente.observacoes || ''
+        observacoes: cliente.observacoes || '',
+        enviar_relatorio_email: cliente.enviar_relatorio_email ?? true
       })
     } else if (clientePreenchido) {
       // Se há dados pré-preenchidos, use-os
@@ -243,7 +247,8 @@ function ClienteModal({
         nome_fantasia: '',
         razao_social: '',
         contato_responsavel: '',
-        observacoes: ''
+        observacoes: '',
+        enviar_relatorio_email: true
       })
     } else {
       // Ao abrir modal para novo cliente, limpa o formulário
@@ -267,7 +272,8 @@ function ClienteModal({
         nome_fantasia: '',
         razao_social: '',
         contato_responsavel: '',
-        observacoes: ''
+        observacoes: '',
+        enviar_relatorio_email: true
       })
     }
     
@@ -646,6 +652,23 @@ function ClienteModal({
                 {erros.email}
               </p>
             )}
+          </div>
+
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <label className="inline-flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.enviar_relatorio_email}
+                onChange={(e) => setFormData({ ...formData, enviar_relatorio_email: e.target.checked })}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>
+                Habilitar envio automático de e-mail no fechamento da OS
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  O envio só ocorre quando este cliente tiver e-mail preenchido e a OS for concluída.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* Endereço */}
