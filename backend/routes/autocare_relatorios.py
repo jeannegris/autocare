@@ -14,11 +14,49 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 import tempfile
 import os
+from pathlib import Path
 
 from db import get_db
+
+
+def _get_logo_path(db: Session) -> Optional[str]:
+    """Retorna o caminho absoluto do logotipo da empresa, ou None se não configurado."""
+    try:
+        cfg = db.query(Configuracao).filter(Configuracao.chave == "logo_empresa").first()
+        if cfg and cfg.valor:
+            p = Path(cfg.valor)
+            if p.exists():
+                return str(p)
+    except Exception:
+        pass
+    return None
+
+
+def _make_logo_callback(logo_path: Optional[str], page_size=A4):
+    """Cria callback ReportLab que desenha o logotipo no canto superior direito de cada página."""
+    def _draw(canvas, doc):
+        if not logo_path:
+            return
+        try:
+            logo_w = 1.5 * inch
+            logo_h = 0.65 * inch
+            margin = 0.22 * inch
+            x = page_size[0] - logo_w - margin
+            y = page_size[1] - logo_h - margin
+            canvas.saveState()
+            canvas.drawImage(
+                logo_path, x, y, width=logo_w, height=logo_h,
+                preserveAspectRatio=True, mask="auto",
+            )
+            canvas.restoreState()
+        except Exception:
+            pass
+    return _draw
+
+
 from models.autocare_models import (
     Cliente, Veiculo, OrdemServico, Produto, MovimentoEstoque, 
-    ItemOrdem, Fornecedor
+    ItemOrdem, Fornecedor, Configuracao
 )
 
 router = APIRouter()
@@ -146,7 +184,7 @@ def relatorio_vendas(
         return gerar_excel_vendas(dados)
     
     elif formato == "pdf":
-        return gerar_pdf_vendas(dados)
+        return gerar_pdf_vendas(dados, _get_logo_path(db))
     
     else:
         raise HTTPException(
@@ -227,7 +265,7 @@ def relatorio_estoque(
     elif formato == "excel":
         return gerar_excel_estoque(dados)
     elif formato == "pdf":
-        return gerar_pdf_estoque(dados)
+        return gerar_pdf_estoque(dados, _get_logo_path(db))
 
 @router.get("/movimentacao-estoque")
 def relatorio_movimentacao_estoque(
@@ -324,7 +362,7 @@ def relatorio_movimentacao_estoque(
         return gerar_excel_movimentacao_estoque(dados)
 
     elif formato == "pdf":
-        return gerar_pdf_movimentacao_estoque(dados)
+        return gerar_pdf_movimentacao_estoque(dados, _get_logo_path(db))
 
     else:
         raise HTTPException(
@@ -398,7 +436,7 @@ def gerar_excel_vendas(dados):
         }
     )
 
-def gerar_pdf_vendas(dados):
+def gerar_pdf_vendas(dados, logo_path=None):
     """Gerar relatório de vendas em PDF"""
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
     
@@ -473,7 +511,8 @@ def gerar_pdf_vendas(dados):
         
         story.append(detalhes_table)
     
-    doc.build(story)
+    _cb = _make_logo_callback(logo_path)
+    doc.build(story, onFirstPage=_cb, onLaterPages=_cb)
     
     return FileResponse(
         temp_file.name,
@@ -543,7 +582,7 @@ def gerar_excel_estoque(dados):
         }
     )
 
-def gerar_pdf_estoque(dados):
+def gerar_pdf_estoque(dados, logo_path=None):
     """Gerar relatório de estoque em PDF"""
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
 
@@ -601,7 +640,8 @@ def gerar_pdf_estoque(dados):
         ]))
         story.append(detalhes_table)
 
-    doc.build(story)
+    _cb = _make_logo_callback(logo_path)
+    doc.build(story, onFirstPage=_cb, onLaterPages=_cb)
 
     return FileResponse(
         temp_file.name,
@@ -666,7 +706,7 @@ def gerar_excel_movimentacao_estoque(dados):
         }
     )
 
-def gerar_pdf_movimentacao_estoque(dados):
+def gerar_pdf_movimentacao_estoque(dados, logo_path=None):
     """Gerar relatório de movimentação de estoque em PDF"""
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
 
@@ -731,7 +771,8 @@ def gerar_pdf_movimentacao_estoque(dados):
         ]))
         story.append(detalhes_table)
 
-    doc.build(story)
+    _cb = _make_logo_callback(logo_path)
+    doc.build(story, onFirstPage=_cb, onLaterPages=_cb)
 
     return FileResponse(
         temp_file.name,

@@ -972,15 +972,19 @@ export default function Clientes() {
     }
   })
 
-  // Sanitiza dados do formulário: remove chaves cujo valor é string vazia.
-  // Isso evita que campos como `data_nascimento: ""` sejam enviados e
-  // causem validação 422 no backend (pydantic espera `date` ou ausência/null).
-  const sanitizeClienteData = (data: ClienteFormData) => {
+  // Sanitiza dados do formulário.
+  // No modo create: remove strings vazias para não causar erro 422 no backend.
+  // No modo update: converte strings vazias em null para limpar o campo no banco.
+  const sanitizeClienteData = (data: ClienteFormData, mode: 'create' | 'update' = 'create') => {
     const copy: any = { ...data }
     Object.keys(copy).forEach((k) => {
-      // Remover strings vazias
       if (copy[k] === '') {
-        delete copy[k]
+        if (mode === 'update') {
+          // Campos que aceitam null no backend (opcionais)
+          copy[k] = null
+        } else {
+          delete copy[k]
+        }
         return
       }
 
@@ -1029,12 +1033,14 @@ export default function Clientes() {
 
   const handleSubmit = (data: ClienteFormData) => {
     console.log('handleSubmit chamado com data:', data)
-    const payload = sanitizeClienteData(data)
-    console.log('payload sanitizado:', payload)
     if (editingCliente) {
+      const payload = sanitizeClienteData(data, 'update')
+      console.log('payload sanitizado (update):', payload)
       console.log('Atualizando cliente ID:', editingCliente.id)
       updateMutation.mutate({ id: editingCliente.id, data: payload as any })
     } else {
+      const payload = sanitizeClienteData(data, 'create')
+      console.log('payload sanitizado (create):', payload)
       // guardar payload para uso em fallback caso o backend retorne mensagem textual
       lastCreatePayload.current = payload as ClienteFormData
       createMutation.mutate(payload as any)

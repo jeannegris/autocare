@@ -46,7 +46,11 @@ INIT_SYSTEM=""
 POSTGRES_STATUS="❌"
 BACKEND_STATUS="❌"
 NGINX_STATUS="❌"
+CELERY_STATUS="❌"
 APP_STATUS="❌"
+
+CELERY_PID_FILE="/tmp/autocare_celery.pid"
+CELERY_LOG_FILE="$PROJECT_DIR/backend/logs/celery.log"
 
 ROOT_DIR="$(cd "$($DIRNAME_CMD "$0")" && pwd)"
 BACKEND_PID_FILE="/tmp/autocare_backend.pid"
@@ -484,7 +488,60 @@ ENVEOF
     fi
 fi
 
-# 4. Testes da aplicação
+# 4. Celery Worker
+echo -e "\n📨 ${BLUE}Verificando Celery Worker (e-mail assíncrono)...${NC}"
+
+# Parar worker antigo se estiver rodando
+OLD_CELERY_PIDS="$($PGREP_CMD -f 'celery.*autocare\|celery.*worker' 2>/dev/null || pgrep -f 'celery.*worker' 2>/dev/null || true)"
+if [ -n "$OLD_CELERY_PIDS" ]; then
+    log "INFO" "Parando Celery worker existente (PIDs: $OLD_CELERY_PIDS)..."
+    echo "$OLD_CELERY_PIDS" | xargs -r $KILL_CMD 2>/dev/null || true
+    echo "$OLD_CELERY_PIDS" | xargs -r sudo -n $KILL_CMD 2>/dev/null || true
+    $SLEEP_CMD 2 2>/dev/null || sleep 2
+fi
+
+if [ "$BACKEND_STATUS" = "✅" ]; then
+    log "INFO" "Iniciando Celery worker..."
+    cd "$PROJECT_DIR/backend"
+
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    fi
+
+    # Garantir arquivo de log do celery
+    $TOUCH_CMD "$CELERY_LOG_FILE" 2>/dev/null || CELERY_LOG_FILE="/tmp/autocare_celery.log"
+    $CHMOD_CMD 666 "$CELERY_LOG_FILE" 2>/dev/null || true
+
+    nohup python3 -m celery -A services.celery_tasks worker \
+        --loglevel=info \
+        --concurrency=2 \
+        --logfile="$CELERY_LOG_FILE" \
+        >> "$CELERY_LOG_FILE" 2>&1 &
+    CELERY_PID=$!
+
+    if echo "$CELERY_PID" > "$CELERY_PID_FILE" 2>/dev/null; then
+        log "INFO" "PID do Celery salvo: $CELERY_PID"
+    fi
+
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        deactivate 2>/dev/null || true
+    fi
+    cd "$ROOT_DIR"
+
+    $SLEEP_CMD 4 2>/dev/null || sleep 4
+
+    if $PGREP_CMD -f 'celery.*worker' >/dev/null 2>&1 || pgrep -f 'celery.*worker' >/dev/null 2>&1; then
+        log "SUCCESS" "Celery worker iniciado (PID: $CELERY_PID)"
+        CELERY_STATUS="✅"
+    else
+        log "WARN" "Celery worker pode não ter iniciado — verifique $CELERY_LOG_FILE"
+        CELERY_STATUS="⚠️"
+    fi
+else
+    log "WARN" "Backend não está rodando — Celery worker não iniciado"
+fi
+
+# 5. Testes da aplicação
 echo -e "\n🔍 ${BLUE}Testando aplicação AutoCare...${NC}"
 
 # Testar PostgreSQL com banco autocare (sem sudo, não-interativo)
@@ -547,7 +604,8 @@ echo -e "${PURPLE}============================================================${
 log "INFO" "Status dos serviços AutoCare:"
 echo -e "   🐘 PostgreSQL: $POSTGRES_STATUS"
 echo -e "   🌐 Nginx: $NGINX_STATUS"
-echo -e "   🔧 Backend: $BACKEND_STATUS" 
+echo -e "   🔧 Backend: $BACKEND_STATUS"
+echo -e "   📨 Celery Worker: $CELERY_STATUS"
 echo -e "   🔍 Aplicação: $APP_STATUS"
 
 echo -e "\n${BLUE}🌐 URLs de acesso:${NC}"
@@ -560,8 +618,7 @@ echo -e "\n${BLUE}🌐 URLs de acesso:${NC}"
 
 echo -e "\n${BLUE}🛠️ Comandos úteis:${NC}"
 echo "   Controlar sistema: sudo /usr/local/bin/autocare {start|stop|restart|status|logs}"
-echo "   Ver logs completos: tail -f $LOG_FILE"
-echo "   Ver logs do script: grep -E '\[INFO\]|\[SUCCESS\]|\[WARN\]|\[ERROR\]' $LOG_FILE"
+echo "   Ver logs completos: tail -f $LOG_FILE"   echo "   Ver logs Celery: tail -f $CELERY_LOG_FILE"echo "   Ver logs do script: grep -E '\[INFO\]|\[SUCCESS\]|\[WARN\]|\[ERROR\]' $LOG_FILE"
 echo "   Conectar ao banco: psql -h localhost -U $DB_USER -d $DB_NAME"
 
 if [ "$APP_STATUS" = "✅" ]; then

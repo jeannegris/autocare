@@ -1,8 +1,12 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status
+﻿from fastapi import APIRouter, Depends, File, HTTPException, status, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import base64
+import json
+import redis
 from db import get_db
 from models.autocare_models import Configuracao, EmailEnvioLog, Produto, Usuario, TaxaPagamento, Maquina
 import hashlib
@@ -12,6 +16,7 @@ import subprocess
 import shutil
 from pathlib import Path
 from decimal import Decimal
+from config import REDIS_URL
 
 # Adicionar o diretório 'services' ao path para imports locais
 base_dir = Path(__file__).parent.parent
@@ -155,6 +160,21 @@ class LimparEmailLogsResponse(BaseModel):
     sucesso: bool
     removidos: int
     mensagem: str
+
+
+class EmailFilaItemResponse(BaseModel):
+    task_id: Optional[str]
+    task_name: Optional[str]
+    ordem_id: Optional[int]
+    destinatario_override: Optional[str]
+
+
+class EmailFilaStatusResponse(BaseModel):
+    celery_worker_ativo: bool
+    workers_ativos: List[str]
+    fila_pendente_total: int
+    fila_emails_pendentes: int
+    itens_email_pendentes: List[EmailFilaItemResponse]
 
 
 # Função auxiliar para hash de senha
@@ -467,6 +487,94 @@ def limpar_logs_envio_email(
         sucesso=True,
         removidos=int(removidos or 0),
         mensagem=f"{int(removidos or 0)} log(s) de envio removido(s) com sucesso"
+    )
+
+
+@router.get("/email-fila-status", response_model=EmailFilaStatusResponse)
+def obter_status_fila_email():
+    """Retorna status do worker Celery e itens pendentes na fila Redis (incluindo e-mails)."""
+    workers_ativos: List[str] = []
+    celery_worker_ativo = False
+
+    try:
+        from services.celery_tasks import celery_app
+        ping_result = celery_app.control.inspect(timeout=0.8).ping() or {}
+        workers_ativos = list(ping_result.keys()) if isinstance(ping_result, dict) else []
+        celery_worker_ativo = len(workers_ativos) > 0
+    except Exception:
+        workers_ativos = []
+        celery_worker_ativo = False
+
+    try:
+        redis_client = redis.from_url(REDIS_URL)
+        fila_pendente_total = int(redis_client.llen("celery") or 0)
+        raw_msgs = redis_client.lrange("celery", 0, 99)
+    except Exception:
+        return EmailFilaStatusResponse(
+            celery_worker_ativo=celery_worker_ativo,
+            workers_ativos=workers_ativos,
+            fila_pendente_total=0,
+            fila_emails_pendentes=0,
+            itens_email_pendentes=[],
+        )
+
+    itens_email: List[EmailFilaItemResponse] = []
+
+    for raw_msg in raw_msgs:
+        try:
+            msg_str = raw_msg.decode("utf-8") if isinstance(raw_msg, (bytes, bytearray)) else str(raw_msg)
+            msg_json = json.loads(msg_str)
+            headers = msg_json.get("headers") or {}
+            task_name = headers.get("task") or msg_json.get("task")
+            task_id = headers.get("id") or (msg_json.get("properties") or {}).get("correlation_id")
+
+            if task_name != "services.celery_tasks.enviar_email_fechamento_os_task":
+                continue
+
+            ordem_id = None
+            destinatario_override = None
+
+            body_b64 = msg_json.get("body")
+            if body_b64:
+                try:
+                    body_decoded = base64.b64decode(body_b64)
+                    payload = json.loads(body_decoded)
+                    # Protocolo comum do Celery: [args, kwargs, embed]
+                    if isinstance(payload, list) and len(payload) >= 2:
+                        args = payload[0] if isinstance(payload[0], list) else []
+                        kwargs = payload[1] if isinstance(payload[1], dict) else {}
+
+                        if args:
+                            try:
+                                ordem_id = int(args[0])
+                            except Exception:
+                                ordem_id = None
+
+                        if ordem_id is None and "ordem_id" in kwargs:
+                            try:
+                                ordem_id = int(kwargs.get("ordem_id"))
+                            except Exception:
+                                ordem_id = None
+
+                        destinatario_override = kwargs.get("destinatario_override")
+                except Exception:
+                    pass
+
+            itens_email.append(EmailFilaItemResponse(
+                task_id=str(task_id) if task_id else None,
+                task_name=str(task_name) if task_name else None,
+                ordem_id=ordem_id,
+                destinatario_override=str(destinatario_override) if destinatario_override else None,
+            ))
+        except Exception:
+            continue
+
+    return EmailFilaStatusResponse(
+        celery_worker_ativo=celery_worker_ativo,
+        workers_ativos=workers_ativos,
+        fila_pendente_total=fila_pendente_total,
+        fila_emails_pendentes=len(itens_email),
+        itens_email_pendentes=itens_email,
     )
 
 
@@ -1327,6 +1435,82 @@ def criar_backup_postgres(dados: ValidarSenhaRequest, db: Session = Depends(get_
             mensagem="Erro ao criar backup",
             erro=str(e)
         )
+
+
+# ====== LOGO DA EMPRESA ======
+
+@router.post("/logo")
+async def upload_logo_empresa(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Faz upload do logotipo da empresa utilizado em relatórios, PDFs e impressões."""
+    from PIL import Image
+    import io as _io
+
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    ct = (file.content_type or "").lower()
+    if ct not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tipo de arquivo não suportado. Use PNG, JPG ou WEBP.",
+        )
+
+    base_dir = Path(__file__).parent.parent  # backend/
+    upload_dir = base_dir / "uploads" / "logo"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Remover logos anteriores para evitar arquivos órfãos com extensão diferente
+    for old_file in upload_dir.glob("logo_empresa.*"):
+        try:
+            old_file.unlink()
+        except Exception:
+            pass
+
+    # Redimensionar para máx 400×160 px mantendo proporção, salvar sempre como PNG
+    content = await file.read()
+    img = Image.open(_io.BytesIO(content)).convert("RGBA")
+    img.thumbnail((400, 160), Image.LANCZOS)
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    buf.seek(0)
+
+    logo_path = upload_dir / "logo_empresa.png"
+    logo_path.write_bytes(buf.read())
+
+    # Persistir caminho no banco de configurações
+    config = db.query(Configuracao).filter(Configuracao.chave == "logo_empresa").first()
+    if config:
+        config.valor = str(logo_path)
+    else:
+        config = Configuracao(
+            chave="logo_empresa",
+            valor=str(logo_path),
+            descricao="Logotipo da empresa para relatórios e PDFs",
+            tipo="string",
+        )
+        db.add(config)
+    db.commit()
+
+    return {"success": True, "path": str(logo_path)}
+
+
+@router.get("/logo")
+def get_logo_empresa(db: Session = Depends(get_db)):
+    """Retorna o arquivo de logotipo da empresa (sem autenticação obrigatória)."""
+    config = db.query(Configuracao).filter(Configuracao.chave == "logo_empresa").first()
+    if not config or not config.valor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Logotipo não configurado",
+        )
+    logo_path = Path(config.valor)
+    if not logo_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Arquivo de logotipo não encontrado no servidor",
+        )
+    return FileResponse(str(logo_path))
 
 
 # ====== ROTAS GENÉRICAS (DEVEM SER POR ÚLTIMO para não interceptar rotas específicas) ======

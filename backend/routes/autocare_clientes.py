@@ -465,7 +465,7 @@ def atualizar_cliente(
                 detail="CPF/CNPJ já cadastrado em outro cliente"
             )
     
-    # Verificar se email já existe em outro cliente
+    # Verificar se email já existe em outro cliente (somente se foi enviado e não é null)
     if cliente_data.email:
         existing = db.query(Cliente).filter(
             Cliente.email == cliente_data.email,
@@ -477,10 +477,19 @@ def atualizar_cliente(
                 detail="E-mail já cadastrado em outro cliente"
             )
     
-    # Atualizar apenas campos não nulos
-    update_data = cliente_data.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(cliente, key, value)
+    # Iterar sobre __fields_set__ (campos explicitamente enviados no JSON).
+    # Para null: Pydantic v1 inclui no __fields_set__ campos enviados como null
+    # apenas quando o valor difere do default — para garantir que nulls enviados
+    # explicitamente sejam aplicados, usamos dict() completo mas filtrando pelos
+    # campos que o frontend realmente mandou (todos, pois o formulário envia tudo).
+    # Excluir campos gerenciados internamente que não devem ser sobrescritos.
+    CAMPOS_PROTEGIDOS = {'id', 'created_at', 'updated_at'}
+    all_data = cliente_data.dict()
+    sent_fields = cliente_data.__fields_set__ or set(all_data.keys())
+    for field in sent_fields:
+        if field in CAMPOS_PROTEGIDOS or not hasattr(cliente, field):
+            continue
+        setattr(cliente, field, all_data.get(field))
     
     db.commit()
     db.refresh(cliente)

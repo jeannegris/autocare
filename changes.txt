@@ -1,13 +1,12 @@
- M backend/models/autocare_models.py
- M backend/routes/autocare_ordens.py
- M backend/schemas/schemas_ordem.py
- M backend/server.py
+ M backend/requirements.txt
+ M backend/routes/autocare_clientes.py
+ M backend/routes/autocare_configuracoes.py
+ M backend/routes/autocare_relatorios.py
+ M backend/schemas/schemas_cliente.py
  M backend/services/email_service.py
  M backup_log.txt
  M changes.txt
- M frontend/src/components/ModalFormaPagamento.tsx
  M frontend/src/components/ModalVisualizarOrdem.tsx
- M frontend/src/hooks/useOrdens.ts
- M frontend/src/pages/OrdensServico.tsx
- M frontend/src/services/ordem-service.ts
- M frontend/src/types/ordem-servico.ts
+ M frontend/src/pages/Clientes.tsx
+ M frontend/src/pages/Configuracoes.tsx
+ M start_services.sh

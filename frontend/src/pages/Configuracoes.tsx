@@ -1,8 +1,9 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../lib/api';
+import { API_PREFIX } from '../lib/config';
 import { toast } from 'sonner';
-import { Settings, Save, DollarSign, Lock, ShieldCheck, AlertTriangle, Wrench, Plus, Edit2, Trash2, CheckCircle, X, Database, Server, Activity, HardDrive, Cpu, RefreshCw, Mail, Eye, EyeOff } from 'lucide-react';
+import { Settings, Save, DollarSign, Lock, ShieldCheck, AlertTriangle, Wrench, Plus, Edit2, Trash2, CheckCircle, X, Database, Server, Activity, HardDrive, Cpu, RefreshCw, Mail, Eye, EyeOff, Upload, ImageIcon } from 'lucide-react';
 
 interface Configuracao {
   id: number;
@@ -99,6 +100,21 @@ interface EmailEnvioLog {
   mensagem: string | null;
 }
 
+interface EmailFilaItem {
+  task_id: string | null;
+  task_name: string | null;
+  ordem_id: number | null;
+  destinatario_override: string | null;
+}
+
+interface EmailFilaStatus {
+  celery_worker_ativo: boolean;
+  workers_ativos: string[];
+  fila_pendente_total: number;
+  fila_emails_pendentes: number;
+  itens_email_pendentes: EmailFilaItem[];
+}
+
 export default function Configuracoes() {
   const queryClient = useQueryClient();
   const [senhaAtual, setSenhaAtual] = useState('');
@@ -112,6 +128,10 @@ export default function Configuracoes() {
   const [smtpPass, setSmtpPass] = useState('');
   const [emailEnvioHabilitado, setEmailEnvioHabilitado] = useState(true);
   const [mostrarSmtpPass, setMostrarSmtpPass] = useState(false);
+  // Logo da empresa
+  const [logoTimestamp, setLogoTimestamp] = useState(Date.now());
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [senhaMargemLucro, setSenhaMargemLucro] = useState('');
   const [mostrarModalAplicarMargem, setMostrarModalAplicarMargem] = useState(false);
   const [mostrarModalSugestao, setMostrarModalSugestao] = useState(false);
@@ -127,6 +147,7 @@ export default function Configuracoes() {
   const [mostrarModalLogsServicos, setMostrarModalLogsServicos] = useState(false);
   const [logsServicos, setLogsServicos] = useState('');
   const [mostrarModalLogsEmail, setMostrarModalLogsEmail] = useState(false);
+  const [mostrarModalFilaEmail, setMostrarModalFilaEmail] = useState(false);
   const [mostrarConfirmacaoLimparLogsEmail, setMostrarConfirmacaoLimparLogsEmail] = useState(false);
   const [senhaLimparLogsEmail, setSenhaLimparLogsEmail] = useState('');
   // Estados para Máquinas
@@ -558,6 +579,20 @@ export default function Configuracoes() {
     enabled: false
   });
 
+  // Query: status da fila de e-mails no Redis/Celery
+  const {
+    data: filaEmailStatus,
+    refetch: refetchFilaEmail,
+    isFetching: isFetchingFilaEmail,
+  } = useQuery<EmailFilaStatus>({
+    queryKey: ['email-fila-status'],
+    queryFn: async () => {
+      const response = await apiFetch('/configuracoes/email-fila-status');
+      return response as EmailFilaStatus;
+    },
+    enabled: false
+  });
+
   // Mutation: limpar logs de envio de e-mail
   const mutationLimparLogsEmail = useMutation({
     mutationFn: async (senha: string) => {
@@ -691,6 +726,24 @@ export default function Configuracoes() {
       chave: 'desconto_maximo_os', 
       valor: descontoMaximo 
     });
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      await apiFetch('/configuracoes/logo', { method: 'POST', body: formData });
+      toast.success('Logotipo salvo com sucesso!');
+      setLogoTimestamp(Date.now());
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao enviar logotipo');
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = '';
+    }
   };
 
   const handleSalvarSmtp = () => {
@@ -1256,6 +1309,68 @@ export default function Configuracoes() {
         </p>
 
         <div className="space-y-4 max-w-lg">
+
+          {/* Logotipo da empresa */}
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+            <label className="block mb-2 text-sm font-medium text-gray-700 flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-blue-600" />
+              Logotipo da empresa
+            </label>
+            <p className="text-xs text-gray-500 mb-3">
+              Exibido no canto superior direito de todos os relatórios, PDFs e impressões de OS.
+            </p>
+
+            {/* Preview do logo atual */}
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex-shrink-0 h-14 w-36 rounded border border-gray-300 bg-white flex items-center justify-center overflow-hidden">
+                <img
+                  key={logoTimestamp}
+                  src={`${API_PREFIX}/configuracoes/logo?_ts=${logoTimestamp}`}
+                  alt="Logotipo atual"
+                  className="max-h-12 max-w-full object-contain"
+                  onLoad={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'block';
+                    const placeholder = e.currentTarget.nextElementSibling as HTMLElement;
+                    if (placeholder) placeholder.style.display = 'none';
+                  }}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    const placeholder = e.currentTarget.nextElementSibling as HTMLElement;
+                    if (placeholder) placeholder.style.display = 'flex';
+                  }}
+                />
+                <span
+                  className="text-xs text-gray-400 hidden items-center gap-1"
+                  style={{ display: 'none' }}
+                >
+                  <ImageIcon className="w-4 h-4" />
+                  Sem logo
+                </span>
+              </div>
+              <div className="text-xs text-gray-500">
+                <p>Formatos aceitos: <strong>PNG, JPG, WEBP</strong></p>
+                <p className="mt-0.5">Recomendado: fundo transparente (PNG)</p>
+              </div>
+            </div>
+
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={handleLogoUpload}
+            />
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              disabled={uploadingLogo}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              <Upload className="w-4 h-4" />
+              {uploadingLogo ? 'Enviando...' : 'Selecionar e enviar logotipo'}
+            </button>
+          </div>
+
           <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
             <label className="inline-flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
               <input
@@ -1347,6 +1462,16 @@ export default function Configuracoes() {
           >
             <Save className="w-4 h-4 mr-2" />
             {mutationSmtp.isPending ? 'Salvando...' : 'Salvar'}
+          </button>
+
+          <button
+            onClick={() => {
+              setMostrarModalFilaEmail(true);
+              refetchFilaEmail();
+            }}
+            className="px-3 py-2 text-xs text-amber-700 border border-amber-300 rounded-md hover:bg-amber-50"
+          >
+            Fila de e-mail
           </button>
 
           <button
@@ -2608,6 +2733,99 @@ export default function Configuracoes() {
               <button
                 onClick={() => setMostrarModalLogsEmail(false)}
                 className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Fila de e-mail (Redis/Celery) */}
+      {mostrarModalFilaEmail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="relative w-full max-w-4xl p-6 mx-4 bg-white rounded-lg shadow-xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="flex items-center text-xl font-semibold text-gray-800">
+                <Mail className="w-5 h-5 mr-2 text-amber-600" />
+                Fila de e-mail
+              </h2>
+              <button
+                onClick={() => setMostrarModalFilaEmail(false)}
+                className="text-gray-400 hover:text-gray-600"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="p-3 rounded-md border border-gray-200 bg-gray-50">
+                <p className="text-xs text-gray-500">Worker Celery</p>
+                <p className={`text-sm font-semibold ${filaEmailStatus?.celery_worker_ativo ? 'text-green-700' : 'text-red-700'}`}>
+                  {filaEmailStatus?.celery_worker_ativo ? 'Ativo' : 'Inativo'}
+                </p>
+              </div>
+              <div className="p-3 rounded-md border border-gray-200 bg-gray-50">
+                <p className="text-xs text-gray-500">Fila pendente total</p>
+                <p className="text-sm font-semibold text-gray-800">{filaEmailStatus?.fila_pendente_total ?? 0}</p>
+              </div>
+              <div className="p-3 rounded-md border border-gray-200 bg-gray-50">
+                <p className="text-xs text-gray-500">E-mails pendentes</p>
+                <p className="text-sm font-semibold text-amber-700">{filaEmailStatus?.fila_emails_pendentes ?? 0}</p>
+              </div>
+            </div>
+
+            <div className="mb-3 text-xs text-gray-500">
+              {filaEmailStatus?.workers_ativos?.length ? (
+                <span>Workers ativos: {filaEmailStatus.workers_ativos.join(', ')}</span>
+              ) : (
+                <span>Nenhum worker respondeu ao ping do Celery.</span>
+              )}
+            </div>
+
+            <div className="overflow-auto border border-gray-200 rounded-md flex-1">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr className="text-left text-gray-700">
+                    <th className="px-3 py-2 border-b">Task ID</th>
+                    <th className="px-3 py-2 border-b">Task</th>
+                    <th className="px-3 py-2 border-b">OS</th>
+                    <th className="px-3 py-2 border-b">Destino Override</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(filaEmailStatus?.itens_email_pendentes || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
+                        Nenhum e-mail pendente encontrado na fila.
+                      </td>
+                    </tr>
+                  ) : (
+                    (filaEmailStatus?.itens_email_pendentes || []).map((item, idx) => (
+                      <tr key={`${item.task_id || 'task'}-${idx}`} className="hover:bg-gray-50 align-top">
+                        <td className="px-3 py-2 border-b text-xs break-all">{item.task_id || '-'}</td>
+                        <td className="px-3 py-2 border-b text-xs">{item.task_name || '-'}</td>
+                        <td className="px-3 py-2 border-b whitespace-nowrap">{item.ordem_id ?? '-'}</td>
+                        <td className="px-3 py-2 border-b text-xs">{item.destinatario_override || '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end mt-4 gap-2">
+              <button
+                onClick={() => refetchFilaEmail()}
+                disabled={isFetchingFilaEmail}
+                className="px-4 py-2 text-amber-700 border border-amber-300 rounded-md hover:bg-amber-50 disabled:opacity-60"
+              >
+                {isFetchingFilaEmail ? 'Atualizando...' : 'Atualizar'}
+              </button>
+              <button
+                onClick={() => setMostrarModalFilaEmail(false)}
+                className="px-4 py-2 text-white bg-amber-600 rounded-md hover:bg-amber-700"
               >
                 Fechar
               </button>

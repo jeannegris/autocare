@@ -24,7 +24,11 @@ class ClienteBase(BaseModel):
     rg_ie: Optional[str] = None
     observacoes: Optional[str] = None
     enviar_relatorio_email: bool = True
-    ativo: bool = True
+    ativo: Optional[bool] = True
+
+    @validator('ativo', pre=True, always=True)
+    def _ativo_default(cls, v):
+        return True if v is None else v
 
     @validator('tipo')
     def validate_tipo(cls, v):
@@ -38,7 +42,13 @@ class ClienteCreate(ClienteBase):
 class ClienteUpdate(BaseModel):
     nome: Optional[str] = None
     cpf_cnpj: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None  # str (não EmailStr) para aceitar null/vazio sem rejeição de validação
+
+    @validator('email', pre=True, always=True)
+    def _email_vazio_para_none(cls, v):
+        if v == '':
+            return None
+        return v
     telefone: Optional[str] = None
     telefone2: Optional[str] = None
     whatsapp: Optional[str] = None

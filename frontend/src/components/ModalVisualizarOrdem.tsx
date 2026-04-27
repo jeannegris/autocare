@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ModalCancelamento from './ModalCancelamento';
 import ModalFormaPagamento from './ModalFormaPagamento';
+import { API_PREFIX } from '../lib/config';
 
 interface ModalVisualizarOrdemProps {
   isOpen: boolean;
@@ -325,6 +326,15 @@ export default function ModalVisualizarOrdem({
             .avoid-break {
               page-break-inside: avoid;
             }
+            .print-logo-watermark {
+              position: absolute;
+              right: 0;
+              top: 0;
+              max-height: 52px;
+              max-width: 130px;
+              object-fit: contain;
+              object-position: right top;
+            }
           }
           @media screen {
             .print-only {
@@ -333,7 +343,13 @@ export default function ModalVisualizarOrdem({
           }
         `}} />
 
-        <div className="print-container">
+        <div className="print-container" style={{ position: 'relative' }}>
+          <img
+            src={`${API_PREFIX}/configuracoes/logo`}
+            alt=""
+            className="print-logo-watermark"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
           <div className="print-header">AutoCare - Sistema de Gestão em AutoCenter</div>
 
           <div className="print-title">

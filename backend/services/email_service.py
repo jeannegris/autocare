@@ -182,15 +182,48 @@ def gerar_pdf_fechamento_os(db: Session, ordem_id: int) -> bytes:
     itens_produto = [item for item in ordem.itens if str(item.tipo or "").upper() == "PRODUTO"]
 
     # Descrição do serviço principal cadastrada na OS.
+    _TABLE_WIDTH = 530  # mesma largura da tabela de Peças/Produtos
     if ordem.descricao_servico:
         elements.append(Paragraph("Descrição do Serviço", styles["Heading3"]))
-        elements.append(Paragraph(str(ordem.descricao_servico), styles["Normal"]))
-        elements.append(Spacer(1, 8))
+        linhas_desc = [l.strip() for l in str(ordem.descricao_servico).splitlines() if l.strip()]
+        if not linhas_desc:
+            linhas_desc = [str(ordem.descricao_servico).strip()]
+        rows_desc = [[Paragraph(l, styles["Normal"])] for l in linhas_desc]
+        tab_desc = Table(rows_desc, colWidths=[_TABLE_WIDTH])
+        tab_desc.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ]))
+        elements.append(tab_desc)
+        elements.append(Spacer(1, 10))
 
     if ordem.descricao_problema:
         elements.append(Paragraph("Descrição Complementar", styles["Heading3"]))
-        elements.append(Paragraph(str(ordem.descricao_problema), styles["Normal"]))
-        elements.append(Spacer(1, 8))
+        linhas_prob = [l.strip() for l in str(ordem.descricao_problema).splitlines() if l.strip()]
+        if not linhas_prob:
+            linhas_prob = [str(ordem.descricao_problema).strip()]
+        rows_prob = [[Paragraph(l, styles["Normal"])] for l in linhas_prob]
+        tab_prob = Table(rows_prob, colWidths=[_TABLE_WIDTH])
+        tab_prob.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ]))
+        elements.append(tab_prob)
+        elements.append(Spacer(1, 10))
 
     if itens_servico:
         elements.append(Paragraph("Resumo dos Serviços", styles["Heading3"]))
@@ -265,7 +298,38 @@ def gerar_pdf_fechamento_os(db: Session, ordem_id: int) -> bytes:
     ]))
     elements.append(tab_fin)
 
-    doc.build(elements)
+    # Logo no canto superior direito de cada página
+    try:
+        from pathlib import Path as _Path
+        _logo_cfg = db.query(Configuracao).filter(Configuracao.chave == "logo_empresa").first()
+        _logo_path_str = _logo_cfg.valor if _logo_cfg and _logo_cfg.valor else None
+        if _logo_path_str and not _Path(_logo_path_str).exists():
+            _logo_path_str = None
+    except Exception:
+        _logo_path_str = None
+
+    def _draw_logo_page(canv, doc_obj):
+        if not _logo_path_str:
+            return
+        try:
+            _lw = 108.0   # 1.5 inch em pontos
+            _lh = 46.8    # 0.65 inch em pontos
+            _mx = 15.84   # 0.22 inch em pontos
+            canv.saveState()
+            canv.drawImage(
+                _logo_path_str,
+                A4[0] - _lw - _mx,
+                A4[1] - _lh - _mx,
+                width=_lw,
+                height=_lh,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+            canv.restoreState()
+        except Exception:
+            pass
+
+    doc.build(elements, onFirstPage=_draw_logo_page, onLaterPages=_draw_logo_page)
     pdf = buffer.getvalue()
     buffer.close()
     return pdf
