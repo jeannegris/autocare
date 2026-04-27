@@ -60,6 +60,33 @@ class ItemOrdemNovaResponse(ItemOrdemNovaBase):
     class Config:
         from_attributes = True
 
+
+class FormaPagamentoItem(BaseModel):
+    forma: str  # DINHEIRO, PIX, DEBITO, CREDITO
+    valor: Decimal = Decimal('0.00')
+    numero_parcelas: int = 1
+
+    @validator('forma')
+    def validate_forma(cls, v):
+        if v not in ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO']:
+            raise ValueError('Forma deve ser "DINHEIRO", "PIX", "DEBITO" ou "CREDITO"')
+        return v
+
+    @validator('valor')
+    def validate_valor(cls, v):
+        if v <= 0:
+            raise ValueError('Valor da forma de pagamento deve ser maior que zero')
+        return v
+
+    @validator('numero_parcelas')
+    def validate_numero_parcelas(cls, v, values):
+        forma = values.get('forma')
+        if forma == 'CREDITO' and v < 1:
+            raise ValueError('Número de parcelas deve ser maior que zero para crédito')
+        if forma != 'CREDITO':
+            return 1
+        return v
+
 # Schema para a nova ordem de serviço
 class OrdemServicoNovaBase(BaseModel):
     cliente_id: int
@@ -80,6 +107,7 @@ class OrdemServicoNovaBase(BaseModel):
     # Campos de pagamento
     forma_pagamento: Optional[str] = None  # DINHEIRO, PIX, DEBITO, CREDITO
     numero_parcelas: int = 1  # Número de parcelas (apenas para CREDITO)
+    formas_pagamento: Optional[List[FormaPagamentoItem]] = None  # Rateio por múltiplas formas
     # Lista de itens
     itens: List[ItemOrdemNovaCreate] = []
 
@@ -133,6 +161,7 @@ class OrdemServicoNovaUpdate(BaseModel):
     aprovado_cliente: Optional[bool] = None
     forma_pagamento: Optional[str] = None
     numero_parcelas: Optional[int] = None  # Número de parcelas
+    formas_pagamento: Optional[List[FormaPagamentoItem]] = None
     maquina_id: Optional[int] = None  # ID da máquina para taxa (opcional, usa default se não fornecido)
     motivo_cancelamento: Optional[str] = None  # Motivo do cancelamento (obrigatório quando status = CANCELADA)
     itens: Optional[List[ItemOrdemNovaUpdate]] = None
@@ -154,6 +183,7 @@ class OrdemServicoNovaResponse(OrdemServicoNovaBase):
     aprovado_cliente: bool = False
     forma_pagamento: Optional[str] = None
     numero_parcelas: int = 1  # Número de parcelas
+    formas_pagamento: Optional[List[FormaPagamentoItem]] = None
     taxa_pagamento_aplicada: Decimal = Decimal('0.00')  # Valor da taxa aplicada
     motivo_cancelamento: Optional[str] = None  # Motivo do cancelamento (quando status = CANCELADA)
     created_at: datetime
@@ -196,11 +226,20 @@ class OrdemServicoNovaList(BaseModel):
     valor_mao_obra_avulso: Decimal = Decimal('0.00')  # Mão de obra avulsa
     forma_pagamento: Optional[str] = None
     numero_parcelas: int = 1
+    formas_pagamento: Optional[List[FormaPagamentoItem]] = None
     taxa_pagamento_aplicada: Decimal = Decimal('0.00')  # Taxa da máquina/pagamento
     valor_faturado: Decimal = Decimal('0.00')  # Valor faturado (lucro líquido)
     
     class Config:
         from_attributes = True
+
+
+class OrdemServicoNovaPaginadaResponse(BaseModel):
+    items: List[OrdemServicoNovaList]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 # Schema para autocomplete de produtos
 class ProdutoAutocomplete(BaseModel):

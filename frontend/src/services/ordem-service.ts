@@ -8,6 +8,14 @@ import type {
   ProdutoAutocomplete
 } from '@/types/ordem-servico'
 
+export interface OrdemServicoPaginadoResponse {
+  items: OrdemServicoList[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 // ============= CLIENTES ============= (v2 - usando GET)
 export async function buscarCliente(documento: string): Promise<ClienteBuscaResponse | null> {
   console.log('🔍 [v2-GET] Buscando cliente com documento:', documento);
@@ -77,6 +85,31 @@ export async function listarOrdens(params?: {
   const url = queryString ? `/ordens?${queryString}` : '/ordens'
   
   return apiFetch(url)
+}
+
+export async function listarOrdensPaginado(params?: {
+  page?: number
+  page_size?: number
+  search?: string
+  status?: string
+  cliente_id?: number
+  veiculo_id?: number
+  data_inicio?: string
+  data_fim?: string
+}): Promise<OrdemServicoPaginadoResponse> {
+  const searchParams = new URLSearchParams()
+
+  searchParams.set('page', String(params?.page || 1))
+  searchParams.set('page_size', String(params?.page_size || 10))
+
+  if (params?.search) searchParams.set('search', params.search)
+  if (params?.status) searchParams.set('status', params.status)
+  if (params?.cliente_id) searchParams.set('cliente_id', params.cliente_id.toString())
+  if (params?.veiculo_id) searchParams.set('veiculo_id', params.veiculo_id.toString())
+  if (params?.data_inicio) searchParams.set('data_inicio', params.data_inicio)
+  if (params?.data_fim) searchParams.set('data_fim', params.data_fim)
+
+  return apiFetch(`/ordens/paginado?${searchParams.toString()}`)
 }
 
 export async function obterOrdem(id: number): Promise<OrdemServicoNova> {

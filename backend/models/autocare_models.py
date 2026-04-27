@@ -223,6 +223,7 @@ class OrdemServico(Base):
     aprovado_cliente = Column(Boolean, default=False)
     forma_pagamento = Column(String(50))  # DINHEIRO, PIX, DEBITO, CREDITO
     numero_parcelas = Column(Integer, default=1)  # Número de parcelas (apenas para CREDITO)
+    formas_pagamento = Column(Text)  # JSON com rateio de pagamentos
     taxa_pagamento_aplicada = Column(Numeric(10, 2), default=0)  # Valor da taxa já aplicada
     maquina_id = Column(Integer, ForeignKey("maquinas.id"), nullable=True)  # Máquina utilizada para a taxa
     motivo_cancelamento = Column(Text)  # Motivo do cancelamento (quando status = CANCELADA)

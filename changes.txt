@@ -1,18 +1,13 @@
- M backend/config.py
  M backend/models/autocare_models.py
- M backend/routes/autocare_auth.py
- M backend/routes/autocare_clientes.py
- M backend/routes/autocare_configuracoes.py
  M backend/routes/autocare_ordens.py
- M backend/routes/autocare_usuarios.py
- M backend/schemas/schemas_cliente.py
- M backend/schemas/schemas_usuario.py
+ M backend/schemas/schemas_ordem.py
  M backend/server.py
- M backend/services/celery_tasks.py
+ M backend/services/email_service.py
  M backup_log.txt
  M changes.txt
- M frontend/src/pages/Clientes.tsx
- M frontend/src/pages/Configuracoes.tsx
- M frontend/src/pages/GerenciarUsuarios.tsx
-?? backend/alembic/versions/20260415_add_enviar_relatorio_email_to_clientes.py
-?? backend/services/email_service.py
+ M frontend/src/components/ModalFormaPagamento.tsx
+ M frontend/src/components/ModalVisualizarOrdem.tsx
+ M frontend/src/hooks/useOrdens.ts
+ M frontend/src/pages/OrdensServico.tsx
+ M frontend/src/services/ordem-service.ts
+ M frontend/src/types/ordem-servico.ts

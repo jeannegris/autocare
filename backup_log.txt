@@ -26,3 +26,5 @@
 [15/04/2026 12:51:36,84] Acessando projeto 
 [15/04/2026 12:51:39,85] Backup enviado 
 [15/04/2026 17:48:01,36] Acessando projeto 
+[15/04/2026 17:48:05,21] Backup enviado 
+[27/04/2026  9:33:54,56] Acessando projeto 

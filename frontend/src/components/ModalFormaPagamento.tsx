@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { X, CreditCard } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import type { FormaPagamentoRateio } from '@/types/ordem-servico';
 
 interface Maquina {
   id: number;
@@ -15,7 +16,7 @@ interface Maquina {
 interface ModalFormaPagamentoProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (formaPagamento: string, numeroParcelas: number, maquinaId?: number) => void;
+  onConfirm: (formasPagamento: FormaPagamentoRateio[], maquinaId?: number) => void;
   ordemNumero?: string;
   valorTotal?: number;
 }
@@ -34,8 +35,12 @@ export default function ModalFormaPagamento({
   ordemNumero,
   valorTotal = 0
 }: ModalFormaPagamentoProps) {
-  const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
-  const [numeroParcelas, setNumeroParcelas] = useState(1);
+  const [pagamentos, setPagamentos] = useState<Record<string, { selecionado: boolean; valor: string; numeroParcelas: number }>>({
+    DINHEIRO: { selecionado: true, valor: '0.00', numeroParcelas: 1 },
+    PIX: { selecionado: false, valor: '0.00', numeroParcelas: 1 },
+    DEBITO: { selecionado: false, valor: '0.00', numeroParcelas: 1 },
+    CREDITO: { selecionado: false, valor: '0.00', numeroParcelas: 1 },
+  });
   const [erro, setErro] = useState('');
   const [maquinas, setMaquinas] = useState<Maquina[]>([]);
   const [maquinaSelecionada, setMaquinaSelecionada] = useState<Maquina | null>(null);
@@ -44,12 +49,17 @@ export default function ModalFormaPagamento({
   useEffect(() => {
     // Resetar valores quando abrir
     if (isOpen) {
-      setFormaPagamento('DINHEIRO');
-      setNumeroParcelas(1);
+      const total = Number.isFinite(valorTotal) ? Number(valorTotal || 0) : 0;
+      setPagamentos({
+        DINHEIRO: { selecionado: true, valor: total.toFixed(2), numeroParcelas: 1 },
+        PIX: { selecionado: false, valor: '0.00', numeroParcelas: 1 },
+        DEBITO: { selecionado: false, valor: '0.00', numeroParcelas: 1 },
+        CREDITO: { selecionado: false, valor: '0.00', numeroParcelas: 1 },
+      });
       setErro('');
       buscarMaquinas();
     }
-  }, [isOpen]);
+  }, [isOpen, valorTotal]);
 
   const buscarMaquinas = async () => {
     setCarregandoMaquinas(true);
@@ -72,9 +82,37 @@ export default function ModalFormaPagamento({
 
   if (!isOpen) return null;
 
+  const toNumber = (value: string): number => {
+    const parsed = parseFloat((value || '0').replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const formasSelecionadas = FORMAS_PAGAMENTO
+    .filter((forma) => pagamentos[forma.value]?.selecionado)
+    .map((forma) => {
+      const dados = pagamentos[forma.value];
+      return {
+        forma: forma.value as FormaPagamentoRateio['forma'],
+        valor: toNumber(dados?.valor || '0'),
+        numero_parcelas: forma.value === 'CREDITO' ? Math.max(1, dados?.numeroParcelas || 1) : 1,
+      };
+    })
+    .filter((item) => item.valor > 0);
+
+  const somaSelecionada = formasSelecionadas.reduce((acc, item) => acc + item.valor, 0);
+
+  const calcularTaxaTotal = () => {
+    if (!maquinaSelecionada) return 0;
+
+    return formasSelecionadas.reduce((acc, item) => {
+      const taxaPercentual = getTaxaPercentual(item.forma);
+      return acc + ((item.valor * taxaPercentual) / 100);
+    }, 0);
+  };
+
   const handleSubmit = () => {
-    if (!formaPagamento.trim()) {
-      setErro('Selecione uma forma de pagamento');
+    if (formasSelecionadas.length === 0) {
+      setErro('Selecione ao menos uma forma de pagamento com valor maior que zero');
       return;
     }
 
@@ -83,18 +121,17 @@ export default function ModalFormaPagamento({
       return;
     }
 
-    if (formaPagamento === 'CREDITO' && numeroParcelas < 1) {
-      setErro('Número de parcelas deve ser maior que zero');
+    const diferenca = Math.abs(somaSelecionada - (valorTotal || 0));
+    if (diferenca > 0.01) {
+      setErro('A soma dos valores informados deve ser igual ao valor total da OS');
       return;
     }
 
-    onConfirm(formaPagamento, numeroParcelas, maquinaSelecionada.id);
+    onConfirm(formasSelecionadas, maquinaSelecionada.id);
     handleClose();
   };
 
   const handleClose = () => {
-    setFormaPagamento('DINHEIRO');
-    setNumeroParcelas(1);
     setErro('');
     onClose();
   };
@@ -124,13 +161,8 @@ export default function ModalFormaPagamento({
     return typeof taxa === 'number' ? taxa : parseFloat(String(taxa));
   };
 
-  const calcularTaxa = () => {
-    const taxa = getTaxaPercentual(formaPagamento);
-    return (valorTotal * taxa) / 100;
-  };
-
   const calcularValorFinal = () => {
-    return valorTotal - calcularTaxa();
+    return (valorTotal || 0) - calcularTaxaTotal();
   };
 
   return (
@@ -200,58 +232,90 @@ export default function ModalFormaPagamento({
           {/* Seleção de Forma de Pagamento */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Escolha a forma de pagamento:
+              Escolha as formas de pagamento e os valores:
             </label>
             <div className="space-y-2">
               {FORMAS_PAGAMENTO.map((forma) => (
-                <label key={forma.value} className="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50" style={{
-                  borderColor: formaPagamento === forma.value ? '#3b82f6' : '#e5e7eb',
-                  backgroundColor: formaPagamento === forma.value ? '#f0f9ff' : 'transparent'
-                }}>
-                  <input
-                    type="radio"
-                    name="forma_pagamento"
-                    value={forma.value}
-                    checked={formaPagamento === forma.value}
-                    onChange={(e) => {
-                      setFormaPagamento(e.target.value);
-                      setErro('');
-                    }}
-                    className="mt-1"
-                  />
-                  <div className="ml-3 flex-1">
-                    <div className="font-medium text-gray-900">{forma.label}</div>
-                    <div className="text-sm text-gray-500">
-                      Taxa: {getTaxaPercentual(forma.value).toFixed(2)}%
+                <div
+                  key={forma.value}
+                  className="p-3 border rounded-lg"
+                  style={{
+                    borderColor: pagamentos[forma.value]?.selecionado ? '#3b82f6' : '#e5e7eb',
+                    backgroundColor: pagamentos[forma.value]?.selecionado ? '#f0f9ff' : 'transparent',
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={!!pagamentos[forma.value]?.selecionado}
+                      onChange={(e) => {
+                        setPagamentos((prev) => ({
+                          ...prev,
+                          [forma.value]: {
+                            ...prev[forma.value],
+                            selecionado: e.target.checked,
+                            valor: e.target.checked ? (prev[forma.value]?.valor || '0.00') : '0.00',
+                          },
+                        }));
+                        setErro('');
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900">{forma.label}</div>
+                      <div className="text-sm text-gray-500 mb-2">
+                        Taxa: {getTaxaPercentual(forma.value).toFixed(2)}%
+                      </div>
+
+                      {pagamentos[forma.value]?.selecionado && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={pagamentos[forma.value]?.valor || '0.00'}
+                            onChange={(e) => {
+                              setPagamentos((prev) => ({
+                                ...prev,
+                                [forma.value]: {
+                                  ...prev[forma.value],
+                                  valor: e.target.value,
+                                },
+                              }));
+                              setErro('');
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Valor"
+                          />
+
+                          {forma.value === 'CREDITO' && (
+                            <input
+                              type="number"
+                              min="1"
+                              max="12"
+                              value={pagamentos[forma.value]?.numeroParcelas || 1}
+                              onChange={(e) => {
+                                setPagamentos((prev) => ({
+                                  ...prev,
+                                  [forma.value]: {
+                                    ...prev[forma.value],
+                                    numeroParcelas: Math.max(1, parseInt(e.target.value, 10) || 1),
+                                  },
+                                }));
+                                setErro('');
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="Parcelas"
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </label>
+                </div>
               ))}
             </div>
           </div>
-
-          {/* Campo de Parcelas (visível apenas para CREDITO) */}
-          {formaPagamento === 'CREDITO' && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Número de Parcelas:
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="12"
-                value={numeroParcelas}
-                onChange={(e) => {
-                  setNumeroParcelas(Math.max(1, parseInt(e.target.value) || 1));
-                  setErro('');
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-              <div className="text-xs text-gray-500 mt-1">
-                De 1 a 12 parcelas
-              </div>
-            </div>
-          )}
 
           {/* Resumo de Valores */}
           {valorTotal > 0 && (
@@ -262,8 +326,12 @@ export default function ModalFormaPagamento({
                   <span>R$ {valorTotal.toFixed(2).replace('.', ',')}</span>
                 </div>
                 <div className="flex justify-between mb-1">
-                  <span>Taxa ({getTaxaPercentual(formaPagamento).toFixed(2)}%):</span>
-                  <span>- R$ {calcularTaxa().toFixed(2).replace('.', ',')}</span>
+                  <span>Total informado:</span>
+                  <span>R$ {somaSelecionada.toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span>Taxa estimada:</span>
+                  <span>- R$ {calcularTaxaTotal().toFixed(2).replace('.', ',')}</span>
                 </div>
                 <div className="border-t border-blue-200 pt-1 mt-1 flex justify-between font-semibold text-gray-900">
                   <span>Valor Faturado:</span>

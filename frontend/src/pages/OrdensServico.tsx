@@ -28,7 +28,7 @@ import { ptBR } from 'date-fns/locale';
 import { OrdemServicoList, OrdemServicoNova, ClienteBuscaResponse, VeiculoBuscaResponse } from '../types/ordem-servico';
 import { formatPlaca } from '../utils/placaMask';
 import { 
-  useListarOrdens, 
+  useListarOrdensPaginado,
   useEstatisticasOrdens,
   useExcluirOrdem,
   useObterOrdem,
@@ -138,6 +138,7 @@ const formatarFormaPagamento = (formaPagamento?: string | null) => {
 
 export default function OrdensServicoNova() {
   const { hasPermission } = useAuth();
+  const PAGE_SIZE = 30;
   const [tooltipValorFaturado, setTooltipValorFaturado] = useState<{
     ordem: OrdemServicoList;
     left: number;
@@ -190,6 +191,7 @@ export default function OrdensServicoNova() {
   const [ordemSelecionada, setOrdemSelecionada] = useState<number | null>(null);
   const [ordemParaExcluir, setOrdemParaExcluir] = useState<number | null>(null);
   const [mostrarValores, setMostrarValores] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Função para lidar com ordenação
   const handleSort = (coluna: string) => {
@@ -249,12 +251,16 @@ export default function OrdensServicoNova() {
   }, [resizingColumn, startX, startWidth]);
 
   // Query para buscar ordens de serviço
-  const { data: ordens = [], isLoading, refetch } = useListarOrdens({
+  const { data: ordensPage, isLoading, refetch } = useListarOrdensPaginado({
+    page: currentPage,
+    page_size: PAGE_SIZE,
     search: filtros.search || undefined,
     status: filtros.status || undefined,
     data_inicio: filtros.data_inicio || undefined,
-    data_fim: filtros.data_fim || undefined
+    data_fim: filtros.data_fim || undefined,
   });
+
+  const ordens = ordensPage?.items || [];
 
   // Query para buscar ordem específica
   const { data: ordemDetalhada } = useObterOrdem(ordemSelecionada || 0, !!ordemSelecionada);
@@ -308,6 +314,8 @@ export default function OrdensServicoNova() {
     if (valorA > valorB) return ordenacao.direcao === 'asc' ? 1 : -1;
     return 0;
   });
+
+  const totalPages = ordensPage?.total_pages || 1;
 
   // Query para estatísticas
   const { data: estatisticas } = useEstatisticasOrdens();
@@ -512,6 +520,9 @@ export default function OrdensServicoNova() {
           if (statusData.numero_parcelas !== undefined) {
           payload.numero_parcelas = statusData.numero_parcelas;
         }
+          if (Array.isArray(statusData.formas_pagamento)) {
+            payload.formas_pagamento = statusData.formas_pagamento;
+          }
           if (statusData.maquina_id !== undefined) {
             payload.maquina_id = statusData.maquina_id;
           }
@@ -634,6 +645,10 @@ export default function OrdensServicoNova() {
       window.removeEventListener('resize', handleViewportChange);
     };
   }, [tooltipValorFaturado]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filtros.search, filtros.status, filtros.data_inicio, filtros.data_fim]);
 
   return (
     <div className="space-y-6">
@@ -1187,6 +1202,30 @@ export default function OrdensServicoNova() {
           </div>
         )}
       </div>
+
+      {ordens.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-gray-600">
+            Página {currentPage} de {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Anterior
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      )}
 
       {tooltipValorFaturado && ReactDOM.createPortal(
         <div

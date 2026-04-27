@@ -106,6 +106,12 @@ export interface ItemOrdemNova {
   produto_nome?: string;
 }
 
+export interface FormaPagamentoRateio {
+  forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO';
+  valor: number;
+  numero_parcelas?: number;
+}
+
 export interface OrdemServicoNova {
   id?: number;
   numero?: string;
@@ -124,6 +130,7 @@ export interface OrdemServicoNova {
   funcionario_responsavel?: string;
   forma_pagamento?: string; // Novo campo
   numero_parcelas?: number; // Novo campo
+  formas_pagamento?: FormaPagamentoRateio[];
   maquina_id?: number;
   itens: ItemOrdemNova[];
   // Campos de resposta
@@ -176,6 +183,7 @@ export interface OrdemServicoList {
   valor_faturado?: number;
   forma_pagamento?: string;
   numero_parcelas?: number;
+  formas_pagamento?: FormaPagamentoRateio[];
   taxa_pagamento_aplicada?: number;
 }
 

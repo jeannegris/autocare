@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react';
 import { X, User, Car, FileText, DollarSign, Package, Wrench, Printer } from 'lucide-react';
-import { OrdemServicoNova } from '../types/ordem-servico';
+import { FormaPagamentoRateio, OrdemServicoNova } from '../types/ordem-servico';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ModalCancelamento from './ModalCancelamento';
@@ -103,14 +103,22 @@ export default function ModalVisualizarOrdem({
     onChangeStatus(novoStatus);
   };
 
-  const handleConfirmarFormaPagamento = (formaPagamento: string, numeroParcelas: number, maquinaId?: number) => {
+  const handleConfirmarFormaPagamento = (formasPagamento: FormaPagamentoRateio[], maquinaId?: number) => {
     if (onChangeStatus) {
       // Passar forma de pagamento, número de parcelas e máquina como dados adicionais
       const statusData: any = { 
         status: 'CONCLUIDA',
-        forma_pagamento: formaPagamento,
-        numero_parcelas: numeroParcelas
+        formas_pagamento: formasPagamento
       };
+
+      if (formasPagamento.length === 1) {
+        statusData.forma_pagamento = formasPagamento[0].forma;
+        statusData.numero_parcelas = formasPagamento[0].numero_parcelas || 1;
+      } else {
+        statusData.forma_pagamento = 'MULTIPLO';
+        statusData.numero_parcelas = 1;
+      }
+
       // Adicionar maquina_id se foi selecionada
       if (maquinaId) {
         statusData.maquina_id = maquinaId;
@@ -150,13 +158,65 @@ export default function ModalVisualizarOrdem({
     return valorServico + valorPecas - valorDesconto;
   })();
 
-  const formaPagamentoTexto = (() => {
-    if (ordem.forma_pagamento === 'DINHEIRO') return 'Dinheiro';
-    if (ordem.forma_pagamento === 'PIX') return 'PIX';
-    if (ordem.forma_pagamento === 'DEBITO') return 'Débito';
-    if (ordem.forma_pagamento === 'CREDITO') return 'Crédito';
-    return 'Não informado';
-  })();
+  const toMoney = (value?: number) => `R$ ${parseFloat(String(value || 0)).toFixed(2).replace('.', ',')}`;
+
+  const pagamentoLabel = (forma?: string) => {
+    if (forma === 'DINHEIRO') return 'Dinheiro';
+    if (forma === 'PIX') return 'PIX';
+    if (forma === 'DEBITO') return 'Debito';
+    if (forma === 'CREDITO') return 'Credito';
+    if (forma === 'MULTIPLO') return 'Multiplo';
+    return 'Nao informado';
+  };
+
+  const extrairFormasPagamento = (formasRaw: unknown): FormaPagamentoRateio[] => {
+    let lista: any[] = [];
+
+    if (Array.isArray(formasRaw)) {
+      lista = formasRaw;
+    } else if (typeof formasRaw === 'string' && formasRaw.trim()) {
+      try {
+        const parsed = JSON.parse(formasRaw);
+        if (Array.isArray(parsed)) {
+          lista = parsed;
+        }
+      } catch {
+        lista = [];
+      }
+    }
+
+    return lista
+      .map((item) => {
+        const forma = item?.forma || item?.forma_pagamento;
+        const valor = Number(item?.valor ?? item?.valor_pagamento ?? 0);
+        const numeroParcelas = Number(item?.numero_parcelas ?? item?.numeroParcelas ?? 1);
+
+        return {
+          forma,
+          valor,
+          numero_parcelas: Number.isFinite(numeroParcelas) && numeroParcelas > 0 ? numeroParcelas : 1,
+        } as FormaPagamentoRateio;
+      })
+      .filter((item) => !!item.forma && Number.isFinite(item.valor) && item.valor > 0);
+  };
+
+  const formasPagamento = extrairFormasPagamento((ordem as any).formas_pagamento);
+
+  const detalhesPagamento = formasPagamento.length > 0
+    ? formasPagamento.map((item) => ({
+      descricao: pagamentoLabel(item.forma),
+      valor: toMoney(item.valor),
+      numeroParcelas: item.forma === 'CREDITO' ? (item.numero_parcelas || 1) : 1,
+      forma: item.forma,
+    }))
+    : (ordem.forma_pagamento && ordem.forma_pagamento !== 'MULTIPLO'
+      ? [{
+          descricao: pagamentoLabel(ordem.forma_pagamento),
+          valor: toMoney(totalCliente),
+          numeroParcelas: ordem.forma_pagamento === 'CREDITO' ? (ordem.numero_parcelas || 1) : 1,
+          forma: ordem.forma_pagamento,
+        }]
+      : []);
 
   const linhasDescricaoServico = (ordem.descricao_servico || '')
     .split(/\r?\n/)
@@ -392,10 +452,24 @@ export default function ModalVisualizarOrdem({
                   <td style={{ textAlign: 'right' }}>-R$ {parseFloat(String(ordem.valor_desconto || 0)).toFixed(2).replace('.', ',')}</td>
                 </tr>
               )}
-              <tr>
-                <td>Forma de Pagamento</td>
-                <td style={{ textAlign: 'right' }}>{formaPagamentoTexto}</td>
-              </tr>
+              {detalhesPagamento.length > 0 ? (
+                detalhesPagamento.map((item, idx) => (
+                  <tr key={`pagamento-${idx}`}>
+                    <td>
+                      {idx === 0 ? 'Forma de Pagamento' : 'Forma de Pagamento (continuação)'}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {item.descricao}: {item.valor}
+                      {item.forma === 'CREDITO' && item.numeroParcelas > 1 ? ` (${item.numeroParcelas}x)` : ''}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td>Forma de Pagamento</td>
+                  <td style={{ textAlign: 'right' }}>Não informado</td>
+                </tr>
+              )}
               <tr>
                 <td style={{ fontWeight: 700 }}>Total</td>
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>R$ {totalCliente.toFixed(2).replace('.', ',')}</td>
@@ -626,6 +700,16 @@ export default function ModalVisualizarOrdem({
                     <span className="font-medium">-R$ {parseFloat(String(ordem.valor_desconto)).toFixed(2).replace('.', ',')}</span>
                   </div>
                 )}
+
+                {detalhesPagamento.map((item, idx) => (
+                  <div key={`resumo-pagamento-${idx}`} className="flex justify-between">
+                    <span className="text-gray-600">
+                      Pagamento ({item.descricao}{item.forma === 'CREDITO' && item.numeroParcelas > 1 ? ` ${item.numeroParcelas}x` : ''}):
+                    </span>
+                    <span className="font-medium">{item.valor}</span>
+                  </div>
+                ))}
+
                 <div className="border-t pt-2">
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
@@ -635,29 +719,24 @@ export default function ModalVisualizarOrdem({
               </div>
             </div>
 
-            {/* Forma de Pagamento - Mostrar apenas se status for CONCLUIDA e forma_pagamento estiver preenchida */}
-            {ordem.forma_pagamento && (
+            {/* Forma de Pagamento */}
+            {(ordem.forma_pagamento || formasPagamento.length > 0) && (
               <div className="bg-white border rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-3 flex items-center">
                   <DollarSign className="h-4 w-4 mr-2" />
                   Forma de Pagamento
                 </h4>
-                
+
                 <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-gray-600">Método:</span>
-                    <p className="font-medium mt-1">
-                      {ordem.forma_pagamento === 'DINHEIRO' && 'Dinheiro'}
-                      {ordem.forma_pagamento === 'PIX' && 'PIX'}
-                      {ordem.forma_pagamento === 'DEBITO' && 'Débito'}
-                      {ordem.forma_pagamento === 'CREDITO' && 'Crédito'}
-                    </p>
-                  </div>
-                  {ordem.forma_pagamento === 'CREDITO' && ordem.numero_parcelas && (
-                    <div>
-                      <span className="text-gray-600">Parcelamento:</span>
-                      <p className="font-medium mt-1">{ordem.numero_parcelas} parcela{ordem.numero_parcelas > 1 ? 's' : ''}</p>
-                    </div>
+                  {detalhesPagamento.length > 0 ? (
+                    detalhesPagamento.map((item, idx) => (
+                      <p key={idx} className="font-medium">
+                        {item.descricao}: {item.valor}
+                        {item.forma === 'CREDITO' && item.numeroParcelas > 1 ? ` (${item.numeroParcelas}x)` : ''}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-amber-700">Detalhamento de pagamento multiplo nao foi salvo nesta OS.</p>
                   )}
                 </div>
               </div>

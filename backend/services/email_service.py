@@ -1,5 +1,6 @@
 import io
 import smtplib
+import json
 from datetime import datetime
 from decimal import Decimal
 from email.mime.application import MIMEApplication
@@ -83,6 +84,54 @@ def _data_br(value: Any, incluir_hora: bool = False) -> str:
         return dt.strftime("%d/%m/%Y %H:%M" if incluir_hora else "%d/%m/%Y")
     except Exception:
         return str(value)
+
+
+def _parse_formas_pagamento(valor_raw: Any) -> list[dict[str, Any]]:
+    if not valor_raw:
+        return []
+
+    try:
+        data = json.loads(valor_raw) if isinstance(valor_raw, str) else valor_raw
+    except Exception:
+        return []
+
+    if not isinstance(data, list):
+        return []
+
+    retorno = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        forma = str(item.get('forma') or '').upper()
+        if forma not in {'DINHEIRO', 'PIX', 'DEBITO', 'CREDITO'}:
+            continue
+        try:
+            valor = Decimal(str(item.get('valor') or 0)).quantize(Decimal('0.01'))
+        except Exception:
+            valor = Decimal('0.00')
+        if valor <= 0:
+            continue
+        try:
+            parcelas = int(item.get('numero_parcelas') or 1)
+        except Exception:
+            parcelas = 1
+        if parcelas < 1:
+            parcelas = 1
+        if forma != 'CREDITO':
+            parcelas = 1
+        retorno.append({'forma': forma, 'valor': valor, 'numero_parcelas': parcelas})
+
+    return retorno
+
+
+def _rotulo_forma_pagamento(forma: str) -> str:
+    mapa = {
+        'DINHEIRO': 'Dinheiro',
+        'PIX': 'PIX',
+        'DEBITO': 'Debito',
+        'CREDITO': 'Credito',
+    }
+    return mapa.get(str(forma or '').upper(), str(forma or '-'))
 
 
 def gerar_pdf_fechamento_os(db: Session, ordem_id: int) -> bytes:
@@ -185,13 +234,29 @@ def gerar_pdf_fechamento_os(db: Session, ordem_id: int) -> bytes:
         elements.append(Spacer(1, 10))
 
     elements.append(Paragraph("Resumo Financeiro", styles["Heading3"]))
+    formas_pagamento = _parse_formas_pagamento(ordem.formas_pagamento)
+
     financeiro = [
         ["Valor de Serviços", _money(ordem.valor_servico)],
         ["Valor de Peças", _money(ordem.valor_pecas)],
         ["Desconto", _money(ordem.valor_desconto)],
         ["Valor Total", _money(ordem.valor_total)],
-        ["Forma de Pagamento", str(ordem.forma_pagamento or "-")],
     ]
+
+    if formas_pagamento:
+        for item in formas_pagamento:
+            descricao = _rotulo_forma_pagamento(item["forma"])
+            if item["forma"] == "CREDITO" and int(item["numero_parcelas"]) > 1:
+                descricao = f"{descricao} ({int(item['numero_parcelas'])}x)"
+            financeiro.append([f"Pagamento - {descricao}", _money(item["valor"])])
+    else:
+        descricao_unica = _rotulo_forma_pagamento(str(ordem.forma_pagamento or "-"))
+        parcelas = int(ordem.numero_parcelas or 1)
+        if str(ordem.forma_pagamento or "").upper() == "CREDITO" and parcelas > 1:
+            descricao_unica = f"{descricao_unica} ({parcelas}x)"
+        financeiro.append([f"Pagamento - {descricao_unica}", _money(ordem.valor_total)])
+
+    financeiro.append(["Taxa de Pagamento", _money(ordem.taxa_pagamento_aplicada)])
     tab_fin = Table(financeiro, colWidths=[220, 120])
     tab_fin.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),

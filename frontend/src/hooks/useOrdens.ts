@@ -59,6 +59,14 @@ export function useListarOrdens(params?: Parameters<typeof ordemService.listarOr
   })
 }
 
+export function useListarOrdensPaginado(params?: Parameters<typeof ordemService.listarOrdensPaginado>[0]) {
+  return useQuery({
+    queryKey: [...ordemQueryKeys.lists(), 'paginated', params],
+    queryFn: () => ordemService.listarOrdensPaginado(params),
+    staleTime: 1000 * 30,
+  })
+}
+
 export function useObterOrdem(id: number, enabled = true) {
   return useQuery({
     queryKey: ordemQueryKeys.detail(id),
@@ -106,6 +114,7 @@ export function useAtualizarStatusOrdem() {
       motivo_cancelamento,
       forma_pagamento,
       numero_parcelas,
+      formas_pagamento,
       maquina_id,
     }: {
       id: number
@@ -113,6 +122,7 @@ export function useAtualizarStatusOrdem() {
       motivo_cancelamento?: string
       forma_pagamento?: string
       numero_parcelas?: number
+      formas_pagamento?: OrdemServicoAtualizacao['formas_pagamento']
       maquina_id?: number
     }) => {
       const dados: OrdemServicoAtualizacao = {
@@ -120,6 +130,7 @@ export function useAtualizarStatusOrdem() {
         motivo_cancelamento,
         forma_pagamento,
         numero_parcelas,
+        formas_pagamento,
         maquina_id,
       }
 

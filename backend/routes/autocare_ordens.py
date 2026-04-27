@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, or_
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from decimal import Decimal
 from datetime import datetime, date
 from difflib import get_close_matches
@@ -9,6 +9,7 @@ import re
 import pytz
 import logging
 import unicodedata
+import json
 from db import get_db
 from models.autocare_models import OrdemServico, ItemOrdem, Cliente, Veiculo, Produto, MovimentoEstoque, LoteEstoque, ManutencaoHistorico, TaxaPagamento, Maquina
 from schemas.schemas_ordem import (
@@ -16,6 +17,7 @@ from schemas.schemas_ordem import (
     OrdemServicoNovaUpdate,
     OrdemServicoNovaResponse,
     OrdemServicoNovaList,
+    OrdemServicoNovaPaginadaResponse,
     ItemOrdemNovaCreate,
     ItemOrdemNovaResponse,
     ClienteBuscaRequest,
@@ -151,22 +153,121 @@ def obter_taxa_pagamento(db: Session, tipo_pagamento: Optional[str], maquina_id:
     return Decimal('0.00')
 
 
+def _decimal(value: Any) -> Decimal:
+    try:
+        return Decimal(str(value or 0))
+    except Exception:
+        return Decimal('0.00')
+
+
+def parse_formas_pagamento_json(valor_raw: Any) -> List[Dict[str, Any]]:
+    if not valor_raw:
+        return []
+
+    try:
+        if isinstance(valor_raw, str):
+            data = json.loads(valor_raw)
+        else:
+            data = valor_raw
+    except Exception:
+        return []
+
+    if not isinstance(data, list):
+        return []
+
+    formas_validas = {'DINHEIRO', 'PIX', 'DEBITO', 'CREDITO'}
+    resultado: List[Dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        forma = str(item.get('forma') or '').upper().strip()
+        if forma not in formas_validas:
+            continue
+        valor = _decimal(item.get('valor')).quantize(Decimal('0.01'))
+        if valor <= 0:
+            continue
+        numero_parcelas = 1
+        if forma == 'CREDITO':
+            try:
+                numero_parcelas = int(item.get('numero_parcelas') or 1)
+            except Exception:
+                numero_parcelas = 1
+            if numero_parcelas < 1:
+                numero_parcelas = 1
+        resultado.append({
+            'forma': forma,
+            'valor': valor,
+            'numero_parcelas': numero_parcelas,
+        })
+    return resultado
+
+
+def normalizar_formas_pagamento_payload(formas_pagamento: Any, valor_total: Decimal) -> List[Dict[str, Any]]:
+    formas = parse_formas_pagamento_json(formas_pagamento)
+    if not formas:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Informe ao menos uma forma de pagamento com valor maior que zero'
+        )
+
+    soma = sum((_decimal(item['valor']) for item in formas), Decimal('0.00')).quantize(Decimal('0.01'))
+    total = _decimal(valor_total).quantize(Decimal('0.01'))
+    diferenca = abs(total - soma)
+
+    if diferenca > Decimal('0.01'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'A soma das formas de pagamento ({soma}) deve ser igual ao valor total da OS ({total})'
+        )
+
+    return formas
+
+
+def calcular_taxa_para_formas_pagamento(
+    db: Session,
+    valor_total: Decimal,
+    maquina_id: Optional[int],
+    forma_pagamento: Optional[str],
+    formas_pagamento_raw: Any,
+) -> Decimal:
+    formas_pagamento = parse_formas_pagamento_json(formas_pagamento_raw)
+
+    if formas_pagamento:
+        taxa_total = Decimal('0.00')
+        for item in formas_pagamento:
+            percentual = obter_taxa_pagamento(db, item.get('forma'), maquina_id)
+            valor_item = _decimal(item.get('valor'))
+            if percentual > 0 and valor_item > 0:
+                taxa_total += valor_item * (_decimal(percentual) / Decimal('100'))
+        return taxa_total.quantize(Decimal('0.01'))
+
+    if forma_pagamento:
+        percentual_taxa = obter_taxa_pagamento(db, forma_pagamento, maquina_id)
+        if percentual_taxa > 0:
+            return (_decimal(valor_total) * (_decimal(percentual_taxa) / Decimal('100'))).quantize(Decimal('0.01'))
+
+    return Decimal('0.00')
+
+
 def obter_taxa_pagamento_aplicada(ordem: OrdemServico, db: Session) -> Decimal:
     taxa_aplicada = Decimal(str(ordem.taxa_pagamento_aplicada or 0))
     if taxa_aplicada > 0:
         return taxa_aplicada
 
-    if normalizar_status_ordem(ordem.status) != "CONCLUIDA" or not ordem.forma_pagamento:
+    if normalizar_status_ordem(ordem.status) != "CONCLUIDA":
         return taxa_aplicada
 
-    percentual_taxa = obter_taxa_pagamento(db, ordem.forma_pagamento, ordem.maquina_id)
-    if percentual_taxa <= 0:
-        return taxa_aplicada
+    taxa_calculada = calcular_taxa_para_formas_pagamento(
+        db=db,
+        valor_total=_decimal(ordem.valor_total),
+        maquina_id=ordem.maquina_id,
+        forma_pagamento=ordem.forma_pagamento,
+        formas_pagamento_raw=ordem.formas_pagamento,
+    )
+    if taxa_calculada > 0:
+        return taxa_calculada
 
-    valor_base = Decimal(str(ordem.valor_total or 0))
-    return (valor_base * (percentual_taxa / Decimal('100'))).quantize(Decimal('0.01'))
-    
-    return Decimal('0.00')
+    return taxa_aplicada
 
 def calcular_valor_faturado_liquido(
     valor_total: Decimal,
@@ -227,7 +328,7 @@ def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optiona
     Returns:
         Valor da taxa aplicada
     """
-    if normalizar_status_ordem(ordem.status) != "CONCLUIDA" or not ordem.forma_pagamento:
+    if normalizar_status_ordem(ordem.status) != "CONCLUIDA":
         return Decimal('0.00')
     
     # Se não forneceu máquina, usar a padrão
@@ -236,20 +337,13 @@ def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optiona
         if maquina_default:
             maquina_id = maquina_default.id
     
-    # Obter taxa para este tipo de pagamento e máquina
-    percentual_taxa = obter_taxa_pagamento(db, ordem.forma_pagamento, maquina_id)
-    
-    if percentual_taxa <= 0:
-        ordem.taxa_pagamento_aplicada = Decimal('0.00')
-        ordem.maquina_id = maquina_id
-        return Decimal('0.00')
-    
-    # Calcular valor da taxa sobre o valor total
-    valor_base = Decimal(str(ordem.valor_total or 0))
-    taxa_valor = valor_base * (percentual_taxa / Decimal('100'))
-    
-    # Arredondar para 2 casas decimais
-    taxa_valor = taxa_valor.quantize(Decimal('0.01'))
+    taxa_valor = calcular_taxa_para_formas_pagamento(
+        db=db,
+        valor_total=_decimal(ordem.valor_total),
+        maquina_id=maquina_id,
+        forma_pagamento=ordem.forma_pagamento,
+        formas_pagamento_raw=ordem.formas_pagamento,
+    )
     
     # Aplicar taxa ao valor faturado
     ordem.taxa_pagamento_aplicada = taxa_valor
@@ -263,7 +357,7 @@ def aplicar_taxa_pagamento(db: Session, ordem: OrdemServico, maquina_id: Optiona
     
     ordem.valor_faturado = valor_total - taxa_valor - valor_mao_obra_avulso - valor_custo_pecas
     
-    logger.info(f"Taxa de pagamento ({percentual_taxa}%) aplicada para OS {ordem.numero}: {ordem.forma_pagamento} - R${taxa_valor:.2f}")
+    logger.info(f"Taxa de pagamento aplicada para OS {ordem.numero}: R${taxa_valor:.2f}")
     logger.info(f"Componentes do valor_faturado: valor_total={valor_total}, taxa={taxa_valor}, mao_obra={valor_mao_obra_avulso}, custo_pecas={valor_custo_pecas}")
     logger.info(f"Novo valor_faturado: R${ordem.valor_faturado:.2f}")
     
@@ -848,12 +942,134 @@ def listar_ordens_servico(
             "valor_mao_obra_avulso": valor_mao_obra_avulso,  # Incluir mão de obra avulsa
             "forma_pagamento": ordem.forma_pagamento,
             "numero_parcelas": ordem.numero_parcelas or 1,
+            "formas_pagamento": parse_formas_pagamento_json(ordem.formas_pagamento),
             "taxa_pagamento_aplicada": taxa_pagamento_aplicada,
             "valor_faturado": valor_faturado_calculado  # Recalculado dinamicamente
         }
         result.append(OrdemServicoNovaList(**ordem_dict))
     
     return result
+
+
+def montar_ordem_listagem(ordem: OrdemServico, db: Session) -> OrdemServicoNovaList:
+    data_ordem_completa = ordem.data_ordem if ordem.data_ordem else ordem.data_abertura
+
+    valor_total = ordem.valor_total or Decimal('0.00')
+    valor_custo_pecas = ordem.valor_custo_pecas or Decimal('0.00')
+    valor_mao_obra_avulso = ordem.valor_mao_obra_avulso or Decimal('0.00')
+    taxa_pagamento_aplicada = obter_taxa_pagamento_aplicada(ordem, db)
+    valor_faturado_calculado = calcular_valor_faturado_liquido(
+        valor_total=valor_total,
+        valor_custo_pecas=valor_custo_pecas,
+        valor_mao_obra_avulso=valor_mao_obra_avulso,
+        taxa_pagamento_aplicada=taxa_pagamento_aplicada,
+    )
+
+    ordem_dict = {
+        "id": ordem.id,
+        "numero": str(ordem.numero) if ordem.numero else "",
+        "cliente_id": ordem.cliente_id,
+        "cliente_nome": ordem.cliente.nome if ordem.cliente else None,
+        "veiculo_id": ordem.veiculo_id,
+        "veiculo_placa": ordem.veiculo.placa if ordem.veiculo else None,
+        "tipo_ordem": ordem.tipo_ordem,
+        "data_abertura": data_ordem_completa,
+        "data_conclusao": ordem.data_conclusao,
+        "status": normalizar_status_ordem(ordem.status) or ordem.status,
+        "valor_servico": ordem.valor_servico,
+        "valor_pecas": ordem.valor_pecas,
+        "valor_desconto": ordem.valor_desconto,
+        "valor_total": ordem.valor_total,
+        "valor_custo_pecas": valor_custo_pecas,
+        "valor_mao_obra_avulso": valor_mao_obra_avulso,
+        "forma_pagamento": ordem.forma_pagamento,
+        "numero_parcelas": ordem.numero_parcelas or 1,
+        "formas_pagamento": parse_formas_pagamento_json(ordem.formas_pagamento),
+        "taxa_pagamento_aplicada": taxa_pagamento_aplicada,
+        "valor_faturado": valor_faturado_calculado,
+    }
+
+    return OrdemServicoNovaList(**ordem_dict)
+
+
+@router.get("/paginado", response_model=OrdemServicoNovaPaginadaResponse)
+def listar_ordens_servico_paginado(
+    page: int = 1,
+    page_size: int = 10,
+    search: Optional[str] = None,
+    cliente_id: Optional[int] = None,
+    veiculo_id: Optional[int] = None,
+    tipo_ordem: Optional[str] = None,
+    status: Optional[str] = None,
+    data_inicio: Optional[str] = None,
+    data_fim: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Listar ordens de serviço com paginação server-side."""
+    query = db.query(OrdemServico).options(
+        joinedload(OrdemServico.cliente),
+        joinedload(OrdemServico.veiculo)
+    )
+
+    if cliente_id:
+        query = query.filter(OrdemServico.cliente_id == cliente_id)
+
+    if veiculo_id:
+        query = query.filter(OrdemServico.veiculo_id == veiculo_id)
+
+    if tipo_ordem:
+        query = query.filter(OrdemServico.tipo_ordem == tipo_ordem)
+
+    if search and search.strip():
+        termo_busca = search.strip()
+        termo_numero = termo_busca.lstrip("#").strip()
+        termo_numero_like = f"%{termo_numero}%" if termo_numero else f"%{termo_busca}%"
+        termo_like = f"%{termo_busca}%"
+
+        query = query.filter(
+            or_(
+                OrdemServico.numero.ilike(termo_numero_like),
+                OrdemServico.cliente.has(Cliente.nome.ilike(termo_like)),
+                OrdemServico.veiculo.has(Veiculo.placa.ilike(termo_like)),
+            )
+        )
+
+    if status:
+        status_normalizado = normalizar_status_ordem(status)
+        if status_normalizado:
+            query = query.filter(filtro_status_ordem(OrdemServico.status, status_normalizado))
+
+    expr_data = func.coalesce(func.date(OrdemServico.data_ordem), OrdemServico.data_abertura)
+
+    if data_inicio:
+        try:
+            data_start = datetime.fromisoformat(data_inicio).date()
+            query = query.filter(expr_data >= data_start)
+        except ValueError:
+            pass
+
+    if data_fim:
+        try:
+            data_end = datetime.fromisoformat(data_fim).date()
+            query = query.filter(expr_data <= data_end)
+        except ValueError:
+            pass
+
+    total = query.count()
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    skip = (page - 1) * page_size
+
+    ordens = query.order_by(OrdemServico.data_abertura.desc()).offset(skip).limit(page_size).all()
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+    return {
+        "items": [montar_ordem_listagem(ordem, db) for ordem in ordens],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
 
 @router.get("/estatisticas")
 def obter_estatisticas_ordens(db: Session = Depends(get_db)):
@@ -962,6 +1178,8 @@ def buscar_ordem_servico(ordem_id: int, db: Session = Depends(get_db)):
         "tempo_gasto_horas": ordem.tempo_gasto_horas or Decimal('0'),  # Evitar None
         "aprovado_cliente": ordem.aprovado_cliente,
         "forma_pagamento": ordem.forma_pagamento,
+        "numero_parcelas": ordem.numero_parcelas or 1,
+        "formas_pagamento": parse_formas_pagamento_json(ordem.formas_pagamento),
         "created_at": ordem.created_at,
         "updated_at": ordem.updated_at,
         # Dados do cliente
@@ -1174,6 +1392,18 @@ async def criar_ordem_servico(request: Request, db: Session = Depends(get_db)):
             ordem_dict['veiculo_id'] = None
         if ordem_dict.get('status'):
             ordem_dict['status'] = normalizar_status_ordem(ordem_dict.get('status'))
+
+        formas_pagamento_create = ordem_dict.pop('formas_pagamento', None)
+        if formas_pagamento_create:
+            ordem_dict['formas_pagamento'] = json.dumps([
+                {
+                    'forma': str(item.get('forma')).upper(),
+                    'valor': str(_decimal(item.get('valor')).quantize(Decimal('0.01'))),
+                    'numero_parcelas': int(item.get('numero_parcelas') or 1),
+                }
+                for item in formas_pagamento_create
+            ])
+
         # Remover campos que são properties somente leitura
         ordem_dict.pop('tempo_estimado_horas', None)
         ordem_dict.pop('tempo_gasto_horas', None)
@@ -1378,6 +1608,7 @@ def atualizar_ordem_servico(
         ordem.status = previous_status
     update_data = ordem_data.dict(exclude_unset=True)
     itens_payload = update_data.pop('itens', None)
+    formas_pagamento_payload = update_data.pop('formas_pagamento', None)
 
     # Normalização: se frontend enviar veiculo_id = 0, tratar como None para não violar FK
     if 'veiculo_id' in update_data and update_data.get('veiculo_id') in (0, '0'):
@@ -1385,6 +1616,42 @@ def atualizar_ordem_servico(
 
     if 'status' in update_data and update_data.get('status') is not None:
         update_data['status'] = normalizar_status_ordem(update_data.get('status'))
+
+    valor_total_base = _decimal(update_data.get('valor_total', ordem.valor_total or Decimal('0.00')))
+    formas_validas = {'DINHEIRO', 'PIX', 'DEBITO', 'CREDITO'}
+
+    if formas_pagamento_payload is not None:
+        formas_normalizadas = normalizar_formas_pagamento_payload(formas_pagamento_payload, valor_total_base)
+        update_data['formas_pagamento'] = json.dumps([
+            {
+                'forma': item['forma'],
+                'valor': str(_decimal(item['valor']).quantize(Decimal('0.01'))),
+                'numero_parcelas': int(item.get('numero_parcelas') or 1),
+            }
+            for item in formas_normalizadas
+        ])
+        if len(formas_normalizadas) == 1:
+            forma_unica = formas_normalizadas[0]
+            update_data['forma_pagamento'] = forma_unica['forma']
+            update_data['numero_parcelas'] = int(forma_unica.get('numero_parcelas') or 1)
+        else:
+            update_data['forma_pagamento'] = 'MULTIPLO'
+            update_data['numero_parcelas'] = 1
+    elif update_data.get('forma_pagamento'):
+        forma_single = str(update_data.get('forma_pagamento')).upper().strip()
+        if forma_single in formas_validas:
+            numero_parcelas_single = int(update_data.get('numero_parcelas') or 1)
+            if forma_single != 'CREDITO':
+                numero_parcelas_single = 1
+            update_data['forma_pagamento'] = forma_single
+            update_data['numero_parcelas'] = numero_parcelas_single
+            update_data['formas_pagamento'] = json.dumps([
+                {
+                    'forma': forma_single,
+                    'valor': str(valor_total_base.quantize(Decimal('0.01'))),
+                    'numero_parcelas': numero_parcelas_single,
+                }
+            ])
 
     # Validar se status est?? mudando para CANCELADA e motivo_cancelamento foi fornecido
     novo_status = normalizar_status_ordem(update_data.get('status', ordem.status)) or ordem.status
@@ -1836,7 +2103,7 @@ def atualizar_ordem_servico(
         ordem.valor_faturado = valores['valor_faturado']
         ordem.valor_mao_obra = ordem.valor_servico
         ordem.desconto = ordem.valor_desconto
-        if normalizar_status_ordem(ordem.status) == "CONCLUIDA" and ordem.forma_pagamento:
+        if normalizar_status_ordem(ordem.status) == "CONCLUIDA" and (ordem.forma_pagamento or ordem.formas_pagamento):
             aplicar_taxa_pagamento(db, ordem, ordem.maquina_id)
     except Exception:
         # Se algo falhar no recálculo, registrar exceção

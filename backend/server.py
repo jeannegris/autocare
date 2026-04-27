@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI):
         # Compatibilidade de esquema: garantir coluna de opt-in de envio de e-mail em OS.
         db.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS enviar_email_os BOOLEAN DEFAULT TRUE"))
         db.execute(text("UPDATE usuarios SET enviar_email_os = TRUE WHERE enviar_email_os IS NULL"))
+        db.execute(text("ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS formas_pagamento TEXT"))
         db.execute(text("""
             INSERT INTO configuracoes (chave, valor, descricao, tipo)
             VALUES ('email_envio_habilitado', 'true', 'Habilita/desabilita o envio de e-mail em toda a aplicação', 'boolean')
