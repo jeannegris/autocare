@@ -1,12 +1,4 @@
- M backend/requirements.txt
- M backend/routes/autocare_clientes.py
- M backend/routes/autocare_configuracoes.py
- M backend/routes/autocare_relatorios.py
- M backend/schemas/schemas_cliente.py
- M backend/services/email_service.py
  M backup_log.txt
  M changes.txt
- M frontend/src/components/ModalVisualizarOrdem.tsx
  M frontend/src/pages/Clientes.tsx
- M frontend/src/pages/Configuracoes.tsx
- M start_services.sh
+ M frontend/src/pages/Veiculos.tsx

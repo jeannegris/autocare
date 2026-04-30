@@ -2,10 +2,12 @@ import * as React from 'react'
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { handlePlacaInput, formatPlaca } from '../utils/placaMask'
 import ModalVerificacaoVeiculo from '../components/ModalVerificacaoVeiculo'
 import ModalVerificacaoCliente from '../components/ModalVerificacaoCliente'
 import ModalCadastroCliente from '../components/ModalCadastroCliente'
+import ModalBuscaNovoProprietario from '../components/ModalBuscaNovoProprietario'
 import Accordion from '../components/ui/Accordion'
 import { 
   Plus, 
@@ -981,6 +983,9 @@ function ConflictModal({
 }
 
 export default function Veiculos() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLinkHandledRef = React.useRef<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -1000,6 +1005,11 @@ export default function Veiculos() {
   const [clientePreenchido, setClientePreenchido] = useState<any>(null)
   const [clienteSelecionadoId, setClienteSelecionadoId] = useState<number>(0)
   const [clienteSelecionadoNome, setClienteSelecionadoNome] = useState<string>('')
+  const [isTrocaProprietarioOpen, setIsTrocaProprietarioOpen] = useState(false)
+  const [isCadastroNovoProprietarioOpen, setIsCadastroNovoProprietarioOpen] = useState(false)
+  const [termoNovoProprietario, setTermoNovoProprietario] = useState('')
+  const [veiculoParaTrocaProprietario, setVeiculoParaTrocaProprietario] = useState<Veiculo | undefined>()
+  const [clienteNomePorId, setClienteNomePorId] = useState<Record<number, string>>({})
 
   const queryClient = useQueryClient()
   useEffect(() => {
@@ -1025,6 +1035,53 @@ export default function Veiculos() {
   const [conflictOpen, setConflictOpen] = useState(false)
   const [conflictExistingId, setConflictExistingId] = useState<number | null>(null)
   const [conflictExistingAtivo, setConflictExistingAtivo] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const idsFaltantes = [...new Set(
+      veiculos
+        .filter((veiculo) => (!veiculo.cliente_nome || !veiculo.cliente_nome.trim()) && veiculo.cliente_id)
+        .map((veiculo) => veiculo.cliente_id)
+    )].filter((id) => !clienteNomePorId[id])
+
+    if (idsFaltantes.length === 0) return
+
+    let cancelled = false
+
+    ;(async () => {
+      const resultados = await Promise.all(
+        idsFaltantes.map(async (id) => {
+          try {
+            const cliente = await apiFetch(`/clientes/${id}`) as { nome?: string }
+            return { id, nome: (cliente?.nome || '').trim() }
+          } catch {
+            return { id, nome: '' }
+          }
+        })
+      )
+
+      if (cancelled) return
+
+      setClienteNomePorId((prev) => {
+        const next = { ...prev }
+        for (const item of resultados) {
+          if (item.nome) {
+            next[item.id] = item.nome
+          }
+        }
+        return next
+      })
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [veiculos, clienteNomePorId])
+
+  const getNomeClienteVeiculo = (veiculo: Veiculo) => {
+    return (veiculo.cliente_nome && veiculo.cliente_nome.trim())
+      ? veiculo.cliente_nome.trim()
+      : (clienteNomePorId[veiculo.cliente_id] || '')
+  }
 
   // Abrir visualização do veículo existente
   const handleViewExisting = async (id: number) => {
@@ -1253,6 +1310,88 @@ export default function Veiculos() {
     setIsHistoricoOpen(true)
   }
 
+  const handleAbrirTrocaProprietario = (veiculo: Veiculo) => {
+    setVeiculoParaTrocaProprietario(veiculo)
+    setIsTrocaProprietarioOpen(true)
+  }
+
+  const handleNovoProprietarioEncontrado = (cliente?: { id: number; nome: string }) => {
+    if (!veiculoParaTrocaProprietario || !cliente) return
+
+    ;(async () => {
+      try {
+        await apiFetch(`/veiculos/${veiculoParaTrocaProprietario.id}/transferir-proprietario`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ novo_cliente_id: cliente.id })
+        })
+
+        queryClient.invalidateQueries({ queryKey: ['veiculos'] })
+        setIsTrocaProprietarioOpen(false)
+        setVeiculoParaTrocaProprietario(undefined)
+        alert(`Propriedade transferida com sucesso para ${cliente.nome}`)
+      } catch (error: any) {
+        console.error('Erro ao transferir proprietário do veículo:', error)
+        alert('Erro ao transferir proprietário do veículo')
+      }
+    })()
+  }
+
+  const handleCadastrarNovoProprietario = (termo?: string) => {
+    setTermoNovoProprietario((termo || '').trim())
+    setIsTrocaProprietarioOpen(false)
+    setIsCadastroNovoProprietarioOpen(true)
+  }
+
+  useEffect(() => {
+    const editarVeiculoIdParam = searchParams.get('editarVeiculoId')
+    if (!editarVeiculoIdParam) return
+
+    const clienteIdParam = searchParams.get('clienteId')
+    const clienteNomeParam = searchParams.get('clienteNome') || ''
+    const deepLinkKey = `${editarVeiculoIdParam}-${clienteIdParam || ''}-${clienteNomeParam}`
+
+    if (deepLinkHandledRef.current === deepLinkKey) {
+      return
+    }
+
+    const veiculoId = Number(editarVeiculoIdParam)
+    if (!Number.isFinite(veiculoId) || veiculoId <= 0) {
+      return
+    }
+
+    deepLinkHandledRef.current = deepLinkKey
+
+    const paramsSemDeepLink = new URLSearchParams(searchParams)
+    paramsSemDeepLink.delete('editarVeiculoId')
+    paramsSemDeepLink.delete('clienteId')
+    paramsSemDeepLink.delete('clienteNome')
+    setSearchParams(paramsSemDeepLink, { replace: true })
+
+    ;(async () => {
+      try {
+        const veiculo = await apiFetch(`/veiculos/${veiculoId}`) as Veiculo
+        setEditingVeiculo(veiculo)
+
+        if (clienteIdParam) {
+          const clienteId = Number(clienteIdParam)
+          if (Number.isFinite(clienteId) && clienteId > 0) {
+            setClienteSelecionadoId(clienteId)
+          }
+        }
+
+        if (clienteNomeParam) {
+          setClienteSelecionadoNome(clienteNomeParam)
+        }
+
+        setIsModalOpen(true)
+      } catch (error) {
+        console.error('Erro ao abrir edição de veículo via link:', error)
+        alert('Não foi possível abrir o veículo selecionado para edição.')
+      }
+    })()
+  }, [searchParams, setSearchParams])
+
   // Filtros
   const marcasUnicas = [...new Set(veiculos.map(v => v.marca))].sort()
   
@@ -1394,10 +1533,18 @@ export default function Veiculos() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm mb-4">
-                      <div className="flex items-center text-gray-600">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/clientes?editarClienteId=${veiculo.cliente_id}`)}
+                        className="flex items-center text-gray-600 hover:text-blue-600 transition-colors text-left"
+                        title="Editar cliente associado"
+                      >
                         <User className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
-                        <span className="truncate">{veiculo.cliente_nome}</span>
-                      </div>
+                        <span className="truncate">{(() => {
+                          const nome = getNomeClienteVeiculo(veiculo)
+                          return nome ? nome.split(/\s+/)[0] : 'Cliente'
+                        })()}</span>
+                      </button>
 
                       <div className="flex items-center text-gray-600">
                         <Calendar className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
@@ -1457,6 +1604,13 @@ export default function Veiculos() {
                     title="Ver histórico de manutenções"
                   >
                     <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleAbrirTrocaProprietario(veiculo)}
+                    className="text-amber-600 hover:text-amber-900 p-2 rounded-lg hover:bg-amber-50"
+                    title="Trocar proprietário"
+                  >
+                    <User className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => handleEdit(veiculo)}
@@ -1600,6 +1754,40 @@ export default function Veiculos() {
         }}
         onSuccess={handleClienteCadastrado}
         termoBusca={clientePreenchido?.cpf_cnpj || clientePreenchido?.telefone || ''}
+      />
+
+      <ModalBuscaNovoProprietario
+        isOpen={isTrocaProprietarioOpen}
+        onClose={() => {
+          setIsTrocaProprietarioOpen(false)
+          setVeiculoParaTrocaProprietario(undefined)
+        }}
+        onClienteEncontrado={handleNovoProprietarioEncontrado}
+        onCadastrarNovo={handleCadastrarNovoProprietario}
+        veiculo={veiculoParaTrocaProprietario}
+        proprietarioAtual={veiculoParaTrocaProprietario ? {
+          id: veiculoParaTrocaProprietario.cliente_id,
+          nome: getNomeClienteVeiculo(veiculoParaTrocaProprietario) || 'Cliente',
+          veiculos: []
+        } : undefined}
+      />
+
+      <ModalCadastroCliente
+        isOpen={isCadastroNovoProprietarioOpen}
+        onClose={() => {
+          setIsCadastroNovoProprietarioOpen(false)
+          setTermoNovoProprietario('')
+          setVeiculoParaTrocaProprietario(undefined)
+        }}
+        onSuccess={() => {
+          setIsCadastroNovoProprietarioOpen(false)
+          setTermoNovoProprietario('')
+          setVeiculoParaTrocaProprietario(undefined)
+          queryClient.invalidateQueries({ queryKey: ['veiculos'] })
+          alert('Novo proprietário cadastrado e veículo transferido com sucesso!')
+        }}
+        termoBusca={termoNovoProprietario}
+        veiculoParaTransferir={veiculoParaTrocaProprietario}
       />
 
       <ConfirmModal

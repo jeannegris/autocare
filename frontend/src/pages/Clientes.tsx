@@ -28,6 +28,7 @@ import {
 import { DollarSign, Wrench } from 'lucide-react'
 import { format, differenceInYears } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import ModalVerificacaoCliente from '../components/ModalVerificacaoCliente'
 import ModalVisualizarCliente from '../components/ModalVisualizarCliente'
 import {
@@ -87,6 +88,18 @@ interface ClienteFormData {
   contato_responsavel?: string
   observacoes?: string
   enviar_relatorio_email: boolean
+}
+
+interface VeiculoCliente {
+  id: number
+  placa: string
+  marca: string
+  modelo: string
+  ano?: number
+  cor?: string
+  combustivel?: string
+  km_atual?: number
+  ativo?: boolean
 }
 
 interface ClientesPaginadoResponse {
@@ -801,7 +814,88 @@ function ClienteModal({
   )
 }
 
+function VeiculosClienteModal({
+  isOpen,
+  onClose,
+  cliente,
+  veiculos,
+  isLoading,
+  onSelecionarVeiculo
+}: {
+  isOpen: boolean
+  onClose: () => void
+  cliente?: Cliente
+  veiculos: VeiculoCliente[]
+  isLoading: boolean
+  onSelecionarVeiculo: (veiculo: VeiculoCliente) => void
+}) {
+  if (!isOpen || !cliente) return null
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div className="relative top-10 mx-auto p-5 border max-w-3xl shadow-lg rounded-md bg-white">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">Veículos do Cliente</h3>
+            <p className="text-sm text-gray-600 mt-1">{cliente.nome}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center h-36">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : veiculos.length === 0 ? (
+          <div className="text-center py-10 text-gray-500">
+            Nenhum veículo ativo associado a este cliente.
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+            {veiculos.map((veiculo) => (
+              <button
+                key={veiculo.id}
+                onClick={() => onSelecionarVeiculo(veiculo)}
+                className="w-full text-left rounded-lg border border-gray-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Placa</p>
+                    <p className="text-base font-semibold text-gray-900">{veiculo.placa}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">KM Atual</p>
+                    <p className="text-sm font-medium text-gray-900">{veiculo.km_atual != null ? `${veiculo.km_atual.toLocaleString()} km` : '-'}</p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
+                  <p><span className="font-medium text-gray-700">Modelo:</span> {veiculo.marca} {veiculo.modelo}</p>
+                  <p><span className="font-medium text-gray-700">Ano/Cor:</span> {veiculo.ano || '-'} • {veiculo.cor || '-'}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-5 border-t mt-5">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Clientes() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLinkClienteHandledRef = useRef<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -818,6 +912,10 @@ export default function Clientes() {
   
   // Estado para modal de visualização do cliente
   const [clienteVisualizandoId, setClienteVisualizandoId] = useState<number | null>(null)
+  const [clienteVeiculosModalOpen, setClienteVeiculosModalOpen] = useState(false)
+  const [clienteComVeiculosSelecionado, setClienteComVeiculosSelecionado] = useState<Cliente | null>(null)
+  const [veiculosDoCliente, setVeiculosDoCliente] = useState<VeiculoCliente[]>([])
+  const [loadingVeiculosCliente, setLoadingVeiculosCliente] = useState(false)
 
   // Estados para o novo modal de verificação
   const [isVerificacaoModalOpen, setIsVerificacaoModalOpen] = useState(false)
@@ -1068,6 +1166,71 @@ export default function Clientes() {
   const handleDelete = (id: number, nome?: string) => {
     setDeletePending({ id, nome })
   }
+
+  const handleAbrirVeiculosCliente = async (cliente: Cliente) => {
+    if (!cliente.veiculos_count || cliente.veiculos_count <= 0) {
+      toast('Este cliente não possui veículos cadastrados')
+      return
+    }
+
+    setClienteComVeiculosSelecionado(cliente)
+    setClienteVeiculosModalOpen(true)
+    setLoadingVeiculosCliente(true)
+
+    try {
+      const veiculos = await apiFetch(`/clientes/${cliente.id}/veiculos`) as VeiculoCliente[]
+      setVeiculosDoCliente(Array.isArray(veiculos) ? veiculos : [])
+    } catch (error) {
+      console.error('Erro ao buscar veículos do cliente:', error)
+      toast.error('Não foi possível carregar os veículos deste cliente')
+      setVeiculosDoCliente([])
+    } finally {
+      setLoadingVeiculosCliente(false)
+    }
+  }
+
+  const handleSelecionarVeiculoDoCliente = (veiculo: VeiculoCliente) => {
+    if (!clienteComVeiculosSelecionado) return
+
+    setClienteVeiculosModalOpen(false)
+    const params = new URLSearchParams({
+      editarVeiculoId: String(veiculo.id),
+      clienteId: String(clienteComVeiculosSelecionado.id),
+      clienteNome: clienteComVeiculosSelecionado.nome
+    })
+    navigate(`/veiculos?${params.toString()}`)
+  }
+
+  useEffect(() => {
+    const editarClienteIdParam = searchParams.get('editarClienteId')
+    if (!editarClienteIdParam) return
+
+    if (deepLinkClienteHandledRef.current === editarClienteIdParam) {
+      return
+    }
+
+    const clienteId = Number(editarClienteIdParam)
+    if (!Number.isFinite(clienteId) || clienteId <= 0) {
+      return
+    }
+
+    deepLinkClienteHandledRef.current = editarClienteIdParam
+
+    const paramsSemDeepLink = new URLSearchParams(searchParams)
+    paramsSemDeepLink.delete('editarClienteId')
+    setSearchParams(paramsSemDeepLink, { replace: true })
+
+    ;(async () => {
+      try {
+        const cliente = await apiFetch(`/clientes/${clienteId}`) as Cliente
+        setEditingCliente(cliente)
+        setIsModalOpen(true)
+      } catch (error) {
+        console.error('Erro ao abrir edição de cliente via link:', error)
+        toast.error('Não foi possível abrir o cliente selecionado.')
+      }
+    })()
+  }, [searchParams, setSearchParams])
 
   // Função para abrir o modal de verificação de cliente
   const abrirNovoCliente = () => {
@@ -1357,7 +1520,12 @@ export default function Clientes() {
                         </p>
                       </div>
 
-                      <div className="bg-gray-50 rounded-lg p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleAbrirVeiculosCliente(cliente)}
+                        className="bg-gray-50 rounded-lg p-3 text-left hover:bg-purple-50 transition-colors"
+                        title="Clique para ver os veículos deste cliente"
+                      >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-600">Veículos</span>
                           <Car className="h-4 w-4 text-purple-600" />
@@ -1365,7 +1533,7 @@ export default function Clientes() {
                         <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">
                           {cliente.veiculos_count || 0}
                         </p>
-                      </div>
+                      </button>
                     </div>
 
                     {cliente.ultima_visita && (
@@ -1502,6 +1670,19 @@ export default function Clientes() {
         cliente={editingCliente}
         clientePreenchido={clientePreenchido}
         onSubmit={handleSubmit}
+      />
+
+      <VeiculosClienteModal
+        isOpen={clienteVeiculosModalOpen}
+        onClose={() => {
+          setClienteVeiculosModalOpen(false)
+          setClienteComVeiculosSelecionado(null)
+          setVeiculosDoCliente([])
+        }}
+        cliente={clienteComVeiculosSelecionado || undefined}
+        veiculos={veiculosDoCliente}
+        isLoading={loadingVeiculosCliente}
+        onSelecionarVeiculo={handleSelecionarVeiculoDoCliente}
       />
       {/* Reactivation modal - aparece quando o backend indica que existe um registro inativo */}
       {pendingReactivation && (
