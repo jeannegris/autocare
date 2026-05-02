@@ -2,7 +2,50 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+    <!-- Favicon: já aponta estático para evitar timing/cancelamento do browser -->
+    <link
+      id="favicon"
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/autocare-api/configuracoes/favicon.png"
+    />
+    <link
+      id="faviconIco"
+      rel="shortcut icon"
+      type="image/x-icon"
+      href="/autocare-api/configuracoes/favicon.ico"
+    />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Sistema de gestão para AutoCenter" />
+    <title>AutoCenter - Sistema de Gestão</title>
+
+    <script>
+      // Atualiza o favicon com cache-bust (use após trocar o logo nas Configurações)
+      function updateFavicon() {
+        const ts = Date.now();
+        const favicon = document.getElementById('favicon');
+        const faviconIco = document.getElementById('faviconIco');
+
+        favicon.href = '/autocare-api/configuracoes/favicon.png?_ts=' + ts;
+        faviconIco.href = '/autocare-api/configuracoes/favicon.ico?_ts=' + ts;
+      }
+
+      // Expor função global para atualizar imediatamente ao mudar o logo
+      window.updateFaviconImmediately = updateFavicon;
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/autocare/logo_empresa.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Sistema de gestÃ£o para AutoCenter" />
     <title>AutoCenter - Sistema de GestÃ£o</title>

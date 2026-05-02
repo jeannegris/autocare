@@ -1,5 +1,5 @@
 ﻿from fastapi import APIRouter, Depends, File, HTTPException, status, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
@@ -17,6 +17,7 @@ import shutil
 from pathlib import Path
 from decimal import Decimal
 from config import REDIS_URL
+import io
 
 # Adicionar o diretório 'services' ao path para imports locais
 base_dir = Path(__file__).parent.parent
@@ -1511,6 +1512,68 @@ def get_logo_empresa(db: Session = Depends(get_db)):
             detail="Arquivo de logotipo não encontrado no servidor",
         )
     return FileResponse(str(logo_path))
+
+
+def _get_logo_bytes(db: Session) -> bytes:
+    """Retorna bytes do logo atual; levanta HTTPException 404 se não existir."""
+    config = db.query(Configuracao).filter(Configuracao.chave == "logo_empresa").first()
+    if not config or not config.valor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Logotipo não configurado",
+        )
+    logo_path = Path(config.valor)
+    if not logo_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Arquivo de logotipo não encontrado no servidor",
+        )
+    return logo_path.read_bytes()
+
+
+@router.get("/favicon.png")
+def get_favicon_png(db: Session = Depends(get_db)):
+    """Retorna um favicon PNG quadrado (compatível com a maioria dos browsers).
+
+    Gera dinamicamente a partir do logo da empresa, redimensionando para 32x32.
+    """
+    from PIL import Image
+
+    raw = _get_logo_bytes(db)
+    img = Image.open(io.BytesIO(raw)).convert("RGBA")
+
+    # Garantir ícone quadrado: centraliza em canvas quadrado branco e redimensiona
+    size = 32
+    canvas = Image.new("RGBA", (max(img.size), max(img.size)), (255, 255, 255, 0))
+    x = (canvas.size[0] - img.size[0]) // 2
+    y = (canvas.size[1] - img.size[1]) // 2
+    canvas.paste(img, (x, y), img)
+    canvas = canvas.resize((size, size), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG", optimize=True)
+    data = buf.getvalue()
+    return Response(content=data, media_type="image/png")
+
+
+@router.get("/favicon.ico")
+def get_favicon_ico(db: Session = Depends(get_db)):
+    """Retorna um favicon ICO (fallback para navegadores que preferem .ico)."""
+    from PIL import Image
+
+    raw = _get_logo_bytes(db)
+    img = Image.open(io.BytesIO(raw)).convert("RGBA")
+
+    # Canvas quadrado e múltiplos tamanhos dentro do ICO
+    base = Image.new("RGBA", (max(img.size), max(img.size)), (255, 255, 255, 0))
+    x = (base.size[0] - img.size[0]) // 2
+    y = (base.size[1] - img.size[1]) // 2
+    base.paste(img, (x, y), img)
+
+    buf = io.BytesIO()
+    base.save(buf, format="ICO", sizes=[(16, 16), (32, 32), (48, 48)])
+    data = buf.getvalue()
+    return Response(content=data, media_type="image/x-icon")
 
 
 # ====== ROTAS GENÉRICAS (DEVEM SER POR ÚLTIMO para não interceptar rotas específicas) ======

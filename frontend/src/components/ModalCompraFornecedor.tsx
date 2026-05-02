@@ -104,7 +104,7 @@ const ModalCompraFornecedor: React.FC<ModalCompraFornecedorProps> = ({
         
         // Calcular margem baseado no preço de venda
         if (custoUnitario > 0 && precoVenda > 0) {
-          margemCalculada = ((precoVenda - custoUnitario) / custoUnitario) * 100
+          margemCalculada = parseFloat(((precoVenda - custoUnitario) / custoUnitario * 100).toFixed(2))
         }
         
         newItens[index] = {
@@ -119,12 +119,12 @@ const ModalCompraFornecedor: React.FC<ModalCompraFornecedorProps> = ({
       }
     } else if (field === 'preco_venda_unitario') {
       // Quando preencher preço de venda, calcular margem
-      const novoPrecoVenda = parseFloat(value) || 0
+      const novoPrecoVenda = parseFloat(parseFloat(value).toFixed(2)) || 0
       const custo = parseFloat(String(item.preco_custo_unitario)) || 0
       let novaMargemId: number | null = null
       
       if (custo > 0 && novoPrecoVenda > 0) {
-        novaMargemId = ((novoPrecoVenda - custo) / custo) * 100
+        novaMargemId = parseFloat(((novoPrecoVenda - custo) / custo * 100).toFixed(2))
       }
       
       newItens[index] = {
@@ -134,12 +134,12 @@ const ModalCompraFornecedor: React.FC<ModalCompraFornecedorProps> = ({
       }
     } else if (field === 'margem_lucro') {
       // Quando preencher margem, calcular preço de venda
-      const novaMargemId = parseFloat(value) || 0
+      const novaMargemId = parseFloat(parseFloat(value).toFixed(2)) || 0
       const custo = parseFloat(String(item.preco_custo_unitario)) || 0
       let novoPrecoVenda: number | null = null
       
       if (custo > 0) {
-        novoPrecoVenda = custo * (1 + novaMargemId / 100)
+        novoPrecoVenda = parseFloat((custo * (1 + novaMargemId / 100)).toFixed(2))
       }
       
       newItens[index] = {
@@ -156,7 +156,7 @@ const ModalCompraFornecedor: React.FC<ModalCompraFornecedorProps> = ({
       let novaMargemId: number | null = item.margem_lucro || null
       
       if (novoCusto > 0 && precoVenda > 0) {
-        novaMargemId = ((precoVenda - novoCusto) / novoCusto) * 100
+        novaMargemId = parseFloat(((precoVenda - novoCusto) / novoCusto * 100).toFixed(2))
       }
       
       newItens[index] = { 
@@ -293,15 +293,17 @@ const ModalCompraFornecedor: React.FC<ModalCompraFornecedorProps> = ({
               {itens.map((item, idx) => {
                 const subtotal = item.quantidade * item.preco_custo_unitario
                 return (
-                  <div key={idx} className="border border-gray-300 rounded-lg p-4 bg-white hover:bg-gray-50 transition">
-                    {/* Primeira linha: Produto e Quantidade */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">Produto</label>
+                  <div key={idx} className="border border-gray-300 rounded-lg p-3 bg-white hover:bg-gray-50 transition">
+                    {/* Desktop: tudo em uma linha (12 cols). Mobile: empilha */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-2 items-end">
+
+                      {/* Produto — 3 cols */}
+                      <div className="md:col-span-3">
+                        <label className="block text-[10px] font-semibold text-gray-600 mb-1 uppercase tracking-wide">Produto</label>
                         <select
                           value={item.produto_id}
                           onChange={(e) => handleItemChange(idx, 'produto_id', parseInt(e.target.value))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         >
                           <option value={0}>Selecione um produto</option>
                           {produtos.map((p: Produto) => (
@@ -311,33 +313,35 @@ const ModalCompraFornecedor: React.FC<ModalCompraFornecedorProps> = ({
                           ))}
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">Quantidade</label>
+
+                      {/* Qtd — 1 col */}
+                      <div className="md:col-span-1">
+                        <label className="block text-[10px] font-semibold text-gray-600 mb-1 uppercase tracking-wide">Qtd</label>
                         <input
                           type="number"
                           min="1"
                           value={item.quantidade}
                           onChange={(e) => handleItemChange(idx, 'quantidade', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-1.5 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-right tabular-nums"
                         />
                       </div>
-                    </div>
 
-                    {/* Segunda linha: Custo, Preço Venda, Margem, Subtotal e Ações */}
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-2">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">Custo Unit.</label>
+                      {/* Custo Unit — 2 cols */}
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-semibold text-gray-600 mb-1 uppercase tracking-wide">Custo Unit.</label>
                         <input
                           type="number"
                           step="0.01"
                           min="0"
                           value={item.preco_custo_unitario}
                           onChange={(e) => handleItemChange(idx, 'preco_custo_unitario', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
+                          className="w-full px-1.5 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-right tabular-nums"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">Preço Venda</label>
+
+                      {/* Preço Venda — 2 cols */}
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-semibold text-gray-600 mb-1 uppercase tracking-wide">Preço Venda</label>
                         <input
                           type="number"
                           step="0.01"
@@ -345,35 +349,41 @@ const ModalCompraFornecedor: React.FC<ModalCompraFornecedorProps> = ({
                           value={item.preco_venda_unitario || ''}
                           onChange={(e) => handleItemChange(idx, 'preco_venda_unitario', e.target.value)}
                           placeholder="Auto"
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
+                          className="w-full px-1.5 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-right tabular-nums"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">Margem %</label>
+
+                      {/* Margem % — 2 cols */}
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-semibold text-gray-600 mb-1 uppercase tracking-wide">Margem %</label>
                         <input
                           type="number"
                           step="0.01"
                           value={item.margem_lucro || ''}
                           onChange={(e) => handleItemChange(idx, 'margem_lucro', e.target.value)}
                           placeholder="Auto"
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
+                          className="w-full px-1.5 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-right tabular-nums"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">Subtotal</label>
-                        <div className="w-full px-3 py-2 border border-gray-300 rounded bg-blue-50 text-right font-semibold text-blue-600">
-                          R$ {subtotal.toFixed(2)}
+
+                      {/* Subtotal + botão excluir — 2 cols, flex */}
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-semibold text-gray-600 mb-1 uppercase tracking-wide">Subtotal</label>
+                        <div className="flex items-center gap-1">
+                          <div className="flex-1 min-w-0 px-1.5 py-1.5 border border-gray-300 rounded bg-blue-50 text-right text-xs font-semibold text-blue-600 tabular-nums overflow-hidden text-ellipsis whitespace-nowrap">
+                            R$ {subtotal.toFixed(2)}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(idx)}
+                            className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                            title="Excluir item"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-end justify-center">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(idx)}
-                          className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
-                      </div>
+
                     </div>
                   </div>
                 )

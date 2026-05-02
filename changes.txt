@@ -1,4 +1,6 @@
+ M backend/routes/autocare_configuracoes.py
  M backup_log.txt
  M changes.txt
- M frontend/src/pages/Clientes.tsx
- M frontend/src/pages/Veiculos.tsx
+ M frontend/index.html
+ M frontend/src/components/ModalCompraFornecedor.tsx
+ M frontend/src/pages/Configuracoes.tsx

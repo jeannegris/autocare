@@ -5,6 +5,13 @@ import { API_PREFIX } from '../lib/config';
 import { toast } from 'sonner';
 import { Settings, Save, DollarSign, Lock, ShieldCheck, AlertTriangle, Wrench, Plus, Edit2, Trash2, CheckCircle, X, Database, Server, Activity, HardDrive, Cpu, RefreshCw, Mail, Eye, EyeOff, Upload, ImageIcon } from 'lucide-react';
 
+// Declarar função global para atualizar favicon
+declare global {
+  interface Window {
+    updateFaviconImmediately?: () => void;
+  }
+}
+
 interface Configuracao {
   id: number;
   chave: string;
@@ -738,6 +745,11 @@ export default function Configuracoes() {
       await apiFetch('/configuracoes/logo', { method: 'POST', body: formData });
       toast.success('Logotipo salvo com sucesso!');
       setLogoTimestamp(Date.now());
+      
+      // Atualizar favicon imediatamente
+      if (window.updateFaviconImmediately) {
+        window.updateFaviconImmediately();
+      }
     } catch (error: any) {
       toast.error(error.message || 'Erro ao enviar logotipo');
     } finally {
